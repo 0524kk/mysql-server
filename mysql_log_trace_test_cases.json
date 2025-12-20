@@ -1,0 +1,362 @@
+[
+  {
+    "id": 11,
+    "输入": "InnoDB: Waiting for purge to start",
+    "期望输出": {
+      "文件位置": "storage/innobase/srv/srv0start.cc",
+      "上下文代码": "ib::info(ER_IB_MSG_1049) << \"Waiting for purge to start\";",
+      "函数与场景": "srv_start_threads函数在InnoDB启动模块中,当后台清理线程未启动完成时输出的信息日志,用于跟踪数据库启动过程中purge线程的初始化状态"
+    }
+  },
+  {
+    "id": 12,
+    "输入": "InnoDB: Redo log file creation failed: %s",
+    "期望输出": {
+      "文件位置": "storage/innobase/log/log0files_io.cc",
+      "上下文代码": "ib::error(ER_IB_MSG_LOG_FILE_CREATE_FAILED) << \"Redo log file creation failed: \" << file_path;",
+      "函数与场景": "log_files_create函数在InnoDB redo日志模块中,创建redo日志文件失败时的错误日志,触发场景为磁盘空间不足或权限不足导致日志文件无法创建"
+    }
+  },
+  {
+    "id": 13,
+    "输入": "InnoDB: Detected deadlock",
+    "期望输出": {
+      "文件位置": "storage/innobase/lock/lock0lock.cc",
+      "上下文代码": "ib::info(ER_IB_MSG_634) << \"Detected deadlock\";",
+      "函数与场景": "DeadlockChecker::search函数在InnoDB锁模块中,检测到事务间循环等待形成死锁时输出的信息日志,用于记录死锁检测结果"
+    }
+  },
+  {
+    "id": 14,
+    "输入": "InnoDB: Buffer pool(s) load completed at %s",
+    "期望输出": {
+      "文件位置": "storage/innobase/buf/buf0dump.cc",
+      "上下文代码": "ib::info(ER_IB_MSG_51) << \"Buffer pool(s) load completed at \" << now;",
+      "函数与场景": "buf_load函数在InnoDB缓冲池模块中,从磁盘加载缓冲池预热数据完成时的信息日志,记录缓冲池初始化完成时间点"
+    }
+  },
+  {
+    "id": 15,
+    "输入": "InnoDB: Cannot allocate memory for the buffer pool",
+    "期望输出": {
+      "文件位置": "storage/innobase/buf/buf0buf.cc",
+      "上下文代码": "ib::error(ER_IB_MSG_48) << \"Cannot allocate memory for the buffer pool\";",
+      "函数与场景": "buf_pool_init函数在InnoDB缓冲池模块中,系统内存不足无法分配缓冲池所需内存时的错误日志,导致InnoDB初始化失败"
+    }
+  },
+  {
+    "id": 16,
+    "输入": "InnoDB: Tablespace %lu is being encrypted, waiting for completion",
+    "期望输出": {
+      "文件位置": "storage/innobase/fil/fil0fil.cc",
+      "上下文代码": "ib::info(ER_IB_MSG_264) << \"Tablespace \" << space_id << \" is being encrypted, waiting for completion\";",
+      "函数与场景": "fil_encryption_rotate函数在InnoDB表空间模块中,表空间加密操作进行中等待完成时的信息日志,用于跟踪表空间加密进度"
+    }
+  },
+  {
+    "id": 17,
+    "输入": "GTID set is empty, fallback to SHOW MASTER STATUS",
+    "期望输出": {
+      "文件位置": "sql/rpl_replica.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_RPL_GTID_SET_IS_EMPTY_FALLBACK) << \"GTID set is empty, fallback to SHOW MASTER STATUS\";",
+      "函数与场景": "get_master_version_and_clock函数在GTID复制模块中,当从库发现GTID集为空时降级使用传统的SHOW MASTER STATUS方式获取主库位点的信息日志"
+    }
+  },
+  {
+    "id": 18,
+    "输入": "Error in finding GTID set in the binary log",
+    "期望输出": {
+      "文件位置": "sql/rpl_gtid_set.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_BINLOG_CANT_FIND_GTID_SET) << \"Error in finding GTID set in the binary log\";",
+      "函数与场景": "Gtid_set::add_gtid_encoding函数在GTID集合模块中,解析binlog文件时无法找到有效的GTID集合信息时的错误日志,导致复制初始化失败"
+    }
+  },
+  {
+    "id": 19,
+    "输入": "GTID auto-positioning failed to find position for %s",
+    "期望输出": {
+      "文件位置": "sql/rpl_binlog_sender.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_GTID_AUTO_POS_FAILED) << \"GTID auto-positioning failed to find position for \" << gtid_str;",
+      "函数与场景": "Binlog_sender::get_binlogs函数在GTID复制模块中,主库使用GTID自动定位时无法找到从库请求的GTID对应的binlog位置时的错误日志"
+    }
+  },
+  {
+    "id": 20,
+    "输入": "Executing GTID cleanup, purging GTIDs older than %llu transactions",
+    "期望输出": {
+      "文件位置": "sql/rpl_gtid_persist.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_RPL_GTID_CLEANUP) << \"Executing GTID cleanup, purging GTIDs older than \" << threshold << \" transactions\";",
+      "函数与场景": "Gtid_table_persistor::compress函数在GTID持久化模块中,清理mysql.gtid_executed表中的旧GTID记录时的信息日志,用于定期压缩GTID历史"
+    }
+  },
+  {
+    "id": 21,
+    "输入": "GTID consistency check failed: Transaction violates GTID consistency",
+    "期望输出": {
+      "文件位置": "sql/rpl_gtid_state.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_GTID_CONSISTENCY_VIOLATED) << \"GTID consistency check failed: Transaction violates GTID consistency\";",
+      "函数与场景": "gtid_pre_statement_checks函数在GTID状态模块中,事务执行前检测到违反GTID一致性约束(如CREATE TABLE ... SELECT在GTID模式下)时的错误日志"
+    }
+  },
+  {
+    "id": 22,
+    "输入": "# Query_time: 10.000000  Lock_time: 0.000000 Rows_sent: 1  Rows_examined: 1000000",
+    "期望输出": {
+      "文件位置": "sql/log.cc",
+      "上下文代码": "my_b_printf(&log_file, \"# Query_time: %s  Lock_time: %s Rows_sent: %lu  Rows_examined: %lu\\n\", query_time_buff, lock_time_buff, (ulong)thd->get_sent_row_count(), (ulong)thd->get_examined_row_count());",
+      "函数与场景": "log_slow_statement函数在慢查询日志模块中,记录执行时间超过long_query_time阈值的查询详细信息,包括查询时间、锁等待时间、返回行数和扫描行数"
+    }
+  },
+  {
+    "id": 23,
+    "输入": "Slow query logging is enabled, file: %s",
+    "期望输出": {
+      "文件位置": "sql/sys_vars.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_SLOW_QUERY_LOG_ENABLED) << \"Slow query logging is enabled, file: \" << opt_slow_logname;",
+      "函数与场景": "Sys_var_slow_log_file::global_update函数在系统变量模块中,开启慢查询日志时输出的信息日志,确认慢日志文件路径配置"
+    }
+  },
+  {
+    "id": 24,
+    "输入": "Changed slow query log threshold to %.6f seconds",
+    "期望输出": {
+      "文件位置": "sql/sys_vars.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_SLOW_QUERY_THRESHOLD_CHANGED) << \"Changed slow query log threshold to \" << long_query_time << \" seconds\";",
+      "函数与场景": "Sys_var_long_query_time::session_update函数在系统变量模块中,动态调整long_query_time阈值时的信息日志,用于跟踪慢查询配置变更"
+    }
+  },
+  {
+    "id": 25,
+    "输入": "Slow query: Schema: %s  Rows_affected: %lu",
+    "期望输出": {
+      "文件位置": "sql/log.cc",
+      "上下文代码": "my_b_printf(&log_file, \"# Schema: %s  Rows_affected: %lu\\n\", thd->db().str, (ulong)thd->get_row_count_func());",
+      "函数与场景": "log_slow_do函数在慢查询日志模块中,记录慢查询涉及的数据库名称和影响的行数,扩展慢日志的详细诊断信息"
+    }
+  },
+  {
+    "id": 26,
+    "输入": "Access denied for user 'root'@'localhost' (using password: YES)",
+    "期望输出": {
+      "文件位置": "sql/auth/sql_authentication.cc",
+      "上下文代码": "LogErr(WARNING_LEVEL, ER_ACCESS_DENIED_ERROR) << \"Access denied for user '\" << user << \"'@'\" << host << \"' (using password: \" << (passwd[0] ? \"YES\" : \"NO\") << \")\";",
+      "函数与场景": "acl_authenticate函数在权限认证模块中,用户密码验证失败时的警告日志,记录登录失败的用户名、主机和认证方式"
+    }
+  },
+  {
+    "id": 27,
+    "输入": "LDAP authentication failed: Invalid credentials for user %s",
+    "期望输出": {
+      "文件位置": "plugin/auth/authentication_ldap_sasl_client.cc",
+      "上下文代码": "log_error(LOG_LEVEL_ERROR, \"LDAP authentication failed: Invalid credentials for user %s\", user_name);",
+      "函数与场景": "Ldap_authentication::authenticate函数在LDAP认证插件中,LDAP服务器返回凭据无效时的错误日志,标识LDAP集成认证失败原因"
+    }
+  },
+  {
+    "id": 28,
+    "输入": "PAM authentication plugin: User %s authentication failed",
+    "期望输出": {
+      "文件位置": "plugin/auth/authentication_pam/authentication_pam.cc",
+      "上下文代码": "my_plugin_log_message(&plugin_ref, MY_ERROR_LEVEL, \"PAM authentication plugin: User %s authentication failed\", user);",
+      "函数与场景": "authenticate_user_with_pam函数在PAM认证插件中,PAM系统认证失败时的错误日志,用于Linux系统集成认证故障排查"
+    }
+  },
+  {
+    "id": 29,
+    "输入": "User %s does not have %s privilege on database %s",
+    "期望输出": {
+      "文件位置": "sql/auth/sql_authorization.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_DBACCESS_DENIED_ERROR) << \"User \" << thd->security_context()->user().str << \" does not have \" << privilege << \" privilege on database \" << db;",
+      "函数与场景": "check_access函数在权限检查模块中,检测到用户缺少指定数据库的必要权限时的错误日志,导致SQL语句执行被拒绝"
+    }
+  },
+  {
+    "id": 30,
+    "输入": "Authentication method %s failed for user %s from host %s",
+    "期望输出": {
+      "文件位置": "sql/auth/sql_authentication.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_AUTH_METHOD_FAILED) << \"Authentication method \" << plugin_name << \" failed for user \" << user << \" from host \" << host;",
+      "函数与场景": "do_auth_once函数在认证模块中,指定认证插件认证失败时的错误日志,记录失败的认证方法、用户名和来源主机"
+    }
+  },
+  {
+    "id": 31,
+    "输入": "NDB: Node 2 failed to connect to management server at 192.168.1.100:1186",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/mgmclient/CommandInterpreter.cpp",
+      "上下文代码": "ndbout_c(\"NDB: Node %d failed to connect to management server at %s:%d\", node_id, host, port);",
+      "函数与场景": "CommandInterpreter::connect函数在NDB管理客户端模块中,数据节点无法连接到管理节点时的错误日志,提示集群连接配置或网络问题"
+    }
+  },
+  {
+    "id": 32,
+    "输入": "cmd: testLock args: -n LockContention T2",
+    "期望输出": {
+      "文件位置": "storage/ndb/test/run-test/daily-basic-tests.txt",
+      "上下文代码": "print \"cmd: testLock args: -n LockContention T2\\n\";",
+      "函数与场景": "测试框架执行NDB锁竞争测试用例时输出的命令日志,测试场景为多个事务并发竞争同一行锁的性能和正确性验证"
+    }
+  },
+  {
+    "id": 33,
+    "输入": "NDB: Data node %d memory usage: %llu MB / %llu MB",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/kernel/vm/mt.cpp",
+      "上下文代码": "g_eventLogger->info(\"NDB: Data node %d memory usage: %llu MB / %llu MB\", nodeId, used_mb, total_mb);",
+      "函数与场景": "check_memory_usage函数在NDB内核虚拟机模块中,定期报告数据节点内存使用情况的信息日志,用于监控集群资源消耗"
+    }
+  },
+  {
+    "id": 34,
+    "输入": "NDB: Transaction coordinator node %d failed",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/ndbapi/Ndb.cpp",
+      "上下文代码": "ndbout_c(\"NDB: Transaction coordinator node %d failed\", tc_node_id);",
+      "函数与场景": "Ndb::handleRecNdbApiFailure函数在NDB API模块中,事务协调者节点故障时的错误日志,触发事务回滚和节点切换"
+    }
+  },
+  {
+    "id": 35,
+    "输入": "NDB: Starting cluster restart sequence",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/mgmsrv/MgmtSrvr.cpp",
+      "上下文代码": "g_eventLogger->info(\"NDB: Starting cluster restart sequence\");",
+      "函数与场景": "MgmtSrvr::restart函数在NDB管理服务器模块中,执行集群滚动重启时的信息日志,用于记录集群维护操作"
+    }
+  },
+  {
+    "id": 36,
+    "输入": "NDB: Data synchronization completed for node %d, lag: %llu seconds",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/kernel/blocks/backup/Backup.cpp",
+      "上下文代码": "infoEvent(\"NDB: Data synchronization completed for node %d, lag: %llu seconds\", nodeId, lag_seconds);",
+      "函数与场景": "Backup::execBACKUP_CONF函数在NDB备份模块中,节点数据同步完成时的信息日志,报告同步延迟时间"
+    }
+  },
+  {
+    "id": 37,
+    "输入": "Could not open binary log file for writing: Permission denied",
+    "期望输出": {
+      "文件位置": "sql/binlog.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_BINLOG_CANT_OPEN_FOR_LOGGING) << \"Could not open binary log file for writing: Permission denied\";",
+      "函数与场景": "MYSQL_BIN_LOG::open_binlog函数在binlog模块中,因权限不足无法打开binlog文件写入时的错误日志,导致binlog功能失效"
+    }
+  },
+  {
+    "id": 38,
+    "输入": "Binary log event format version %d detected",
+    "期望输出": {
+      "文件位置": "sql/log_event.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_BINLOG_EVENT_FORMAT_VERSION) << \"Binary log event format version \" << format_version << \" detected\";",
+      "函数与场景": "Log_event::read_log_event函数在binlog事件模块中,读取binlog文件头识别事件格式版本时的信息日志,用于兼容性检查"
+    }
+  },
+  {
+    "id": 39,
+    "输入": "Binary log purged %d files older than binlog.%06d",
+    "期望输出": {
+      "文件位置": "sql/binlog.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_BINLOG_PURGE_SUCCESS) << \"Binary log purged \" << file_count << \" files older than binlog.\" << std::setfill('0') << std::setw(6) << file_number;",
+      "函数与场景": "MYSQL_BIN_LOG::purge_logs函数在binlog模块中,根据expire_logs_days清理过期binlog文件时的信息日志,记录清理的文件数量"
+    }
+  },
+  {
+    "id": 40,
+    "输入": "Binary log is being flushed to disk, size: %llu bytes",
+    "期望输出": {
+      "文件位置": "sql/binlog.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_BINLOG_FLUSHING) << \"Binary log is being flushed to disk, size: \" << file_size << \" bytes\";",
+      "函数与场景": "MYSQL_BIN_LOG::flush_cache_to_file函数在binlog模块中,事务提交时将binlog缓存刷新到磁盘时的信息日志,用于跟踪binlog写入性能"
+    }
+  },
+  {
+    "id": 41,
+    "输入": "Performance Schema initialized with wait events enabled",
+    "期望输出": {
+      "文件位置": "storage/perfschema/pfs_server.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_PERFSCHEMA_INIT_WITH_EVENTS) << \"Performance Schema initialized with wait events enabled\";",
+      "函数与场景": "initialize_performance_schema函数在Performance Schema初始化模块中,PFS启动完成并启用等待事件监控时的信息日志"
+    }
+  },
+  {
+    "id": 42,
+    "输入": "Performance Schema disabled due to low memory",
+    "期望输出": {
+      "文件位置": "storage/perfschema/pfs_server.cc",
+      "上下文代码": "LogErr(WARNING_LEVEL, ER_PERFSCHEMA_DISABLED_LOW_MEMORY) << \"Performance Schema disabled due to low memory\";",
+      "函数与场景": "init_pfs_instrument_sizing函数在PFS配置模块中,因系统内存不足无法分配PFS所需内存导致PFS被禁用时的警告日志"
+    }
+  },
+  {
+    "id": 43,
+    "输入": "Performance Schema: Table %s/%s instrumentation disabled for performance",
+    "期望输出": {
+      "文件位置": "storage/perfschema/pfs_instr.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_PERFSCHEMA_TABLE_INSTR_DISABLED) << \"Performance Schema: Table \" << schema << \"/\" << table << \" instrumentation disabled for performance\";",
+      "函数与场景": "configure_instr_class函数在PFS监控配置模块中,为减少性能开销关闭特定表的监控时的信息日志,用于优化PFS采集成本"
+    }
+  },
+  {
+    "id": 44,
+    "输入": "cmd: testPartition args: -n RangePartition T1",
+    "期望输出": {
+      "文件位置": "mysql-test/suite/parts/t/partition_basic.test",
+      "上下文代码": "-- echo cmd: testPartition args: -n RangePartition T1",
+      "函数与场景": "测试框架执行分区表Range分区测试用例时的命令日志,验证RANGE分区的创建、查询和维护功能"
+    }
+  },
+  {
+    "id": 45,
+    "输入": "cmd: testCharset args: -n Utf8mb4Collation T3",
+    "期望输出": {
+      "文件位置": "mysql-test/suite/collations/t/charset_utf8mb4.test",
+      "上下文代码": "-- echo cmd: testCharset args: -n Utf8mb4Collation T3",
+      "函数与场景": "测试框架执行utf8mb4字符集和排序规则测试用例时的命令日志,验证多字节字符集的存储和比较逻辑"
+    }
+  },
+  {
+    "id": 46,
+    "输入": "cmd: testTempTable args: -n CreateDrop T2",
+    "期望输出": {
+      "文件位置": "mysql-test/t/temp_table.test",
+      "上下文代码": "-- echo cmd: testTempTable args: -n CreateDrop T2",
+      "函数与场景": "测试框架执行临时表创建和删除测试用例时的命令日志,验证临时表的生命周期管理和隔离性"
+    }
+  },
+  {
+    "id": 47,
+    "输入": "cmd: testDDL args: -n AlterTableAddColumn T1",
+    "期望输出": {
+      "文件位置": "mysql-test/t/alter_table.test",
+      "上下文代码": "-- echo cmd: testDDL args: -n AlterTableAddColumn T1",
+      "函数与场景": "测试框架执行DDL在线变更添加列测试用例时的命令日志,验证ALTER TABLE ADD COLUMN的锁行为和数据一致性"
+    }
+  },
+  {
+    "id": 48,
+    "输入": "[ERROR] [MY-010249] [Server] Can't create/write to file '/var/log/mysqld.log'",
+    "期望输出": {
+      "文件位置": "sql/log.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_CANT_CREATE_FILE) << \"[ERROR] [MY-010249] [Server] Can't create/write to file '\" << file_name << \"'\";",
+      "函数与场景": "open_error_log函数在错误日志模块中,无法创建或写入错误日志文件时的结构化错误日志,包含错误码MY-010249和子系统标识Server"
+    }
+  },
+  {
+    "id": 49,
+    "输入": "[Warning] [MY-010068] [Server] CA certificate is self signed.",
+    "期望输出": {
+      "文件位置": "sql/ssl_acceptor_context_data.cc",
+      "上下文代码": "LogErr(WARNING_LEVEL, ER_SSL_CA_SELF_SIGNED) << \"[Warning] [MY-010068] [Server] CA certificate is self signed.\";",
+      "函数与场景": "Ssl_init_callback::operator函数在SSL初始化模块中,检测到CA证书为自签名证书时的结构化警告日志,提示生产环境安全风险"
+    }
+  },
+  {
+    "id": 50,
+    "输入": "[Note] [MY-010252] [Server] Executing 'SELECT * FROM INFORMATION_SCHEMA.TABLES;' to get a list of tables using the deprecated partition engine.",
+    "期望输出": {
+      "文件位置": "sql/sql_partition.cc",
+      "上下文代码": "LogErr(SYSTEM_LEVEL, ER_PARTITION_ENGINE_DEPRECATED) << \"[Note] [MY-010252] [Server] Executing 'SELECT * FROM INFORMATION_SCHEMA.TABLES;' to get a list of tables using the deprecated partition engine.\";",
+      "函数与场景": "warn_deprecated_partition_engine函数在分区模块中,检测到使用已废弃的分区引擎时的结构化系统日志,提示用户升级分区表定义"
+    }
+  }
+]
