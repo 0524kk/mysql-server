@@ -1,0 +1,242 @@
+[
+  {
+    "id": 21,
+    "input": "InnoDB死锁检测在8.0.36→8.0.37版本对中,何时进入死锁判定分支?(storage/innobase/lock/lock0lock.cc / DeadlockChecker::check_and_resolve())",
+    "expected_output": {
+      "分析条件组合": "核心条件(多维度):1)配置条件:innodb_deadlock_detect=ON(默认启用),事务隔离级别为REPEATABLE READ/SERIALIZABLE;2)锁资源条件:两个及以上事务互相持有对方需要的行锁/表锁,形成循环等待;3)检测触发:锁等待超过内部检测阈值(每次锁请求均触发检测);4)版本微调:8.0.37优化死锁检测算法,减少误判,检测效率提升约15%。分支行为:检测到死锁→选择回滚代价最小的事务(通过undo log大小判断),返回ER_LOCK_DEADLOCK错误,释放该事务持有的所有锁;其他事务继续执行。副作用:被回滚事务需重试,错误日志记录死锁详情。",
+      "提供复现步骤": "环境:MySQL 8.0.36与8.0.37,innodb_deadlock_detect=ON,隔离级别REPEATABLE READ。操作:①会话1:BEGIN; UPDATE t1 SET val=1 WHERE id=1;②会话2:BEGIN; UPDATE t1 SET val=2 WHERE id=2;③会话1:UPDATE t1 SET val=3 WHERE id=2;(锁等待)④会话2:UPDATE t1 SET val=4 WHERE id=1;(触发死锁检测)。验证:会话2返回'Deadlock found when trying to get lock; try restarting transaction',会话1获得锁并继续;错误日志记录死锁详情;对比两版本检测耗时(SHOW ENGINE INNODB STATUS);源码参照:storage/innobase/lock/lock0lock.cc的DeadlockChecker::check_and_resolve()死锁判定逻辑、8.0.37优化commit记录。"
+    }
+  },
+  {
+    "id": 22,
+    "input": "InnoDB锁等待超时在8.0.37→8.0.38版本对中,何时进入超时错误分支?(storage/innobase/lock/lock0wait.cc / lock_wait_suspend_thread())",
+    "expected_output": {
+      "分析条件组合": "核心条件(时间驱动):1)配置条件:innodb_lock_wait_timeout设置(默认50秒);2)锁冲突:事务请求的行锁/表锁被其他事务持有,进入等待队列;3)超时触发:等待时间达到innodb_lock_wait_timeout阈值;4)版本微调:8.0.38优化锁等待队列管理,减少超时误差(±100ms→±10ms)。分支行为:超时触发→lock_wait_suspend_thread()返回DB_LOCK_WAIT_TIMEOUT,事务回滚,返回ER_LOCK_WAIT_TIMEOUT错误;副作用:释放已持有的锁,错误日志记录等待详情。",
+      "提供复现步骤": "环境:8.0.37与8.0.38,设置innodb_lock_wait_timeout=5。操作:①会话1:BEGIN; UPDATE t1 SET val=1 WHERE id=1;(不提交)②会话2:BEGIN; UPDATE t1 SET val=2 WHERE id=1;(等待会话1)③等待5秒观察会话2。验证:会话2返回'Lock wait timeout exceeded; try restarting transaction',事务自动回滚;会话1仍持有锁;对比两版本超时精度(记录实际等待时间);源码参照:storage/innobase/lock/lock0wait.cc的lock_wait_suspend_thread()超时判定、8.0.38超时精度优化commit。"
+    }
+  },
+  {
+    "id": 23,
+    "input": "InnoDB事务隔离级别导致的MVCC快照读分支在8.0.36→8.0.37版本对中何时触发?(storage/innobase/trx/trx0trx.cc / read_view_open_now())",
+    "expected_output": {
+      "分析条件组合": "核心条件(隔离级别驱动):1)隔离级别:REPEATABLE READ或SERIALIZABLE,事务首次读取时创建ReadView;2)快照触发:执行SELECT时当前事务无ReadView,调用read_view_open_now()创建;3)版本可见性:根据行记录的DB_TRX_ID与ReadView的trx_ids比对,判断版本可见性;4)版本微调:8.0.37优化ReadView创建性能,减少内存分配开销。分支行为:创建ReadView→仅读取小于ReadView创建时刻已提交的数据版本,其他版本通过undo log回溯;副作用:保证可重复读语义,避免幻读(REPEATABLE READ下)。",
+      "提供复现步骤": "环境:8.0.36与8.0.37,隔离级别REPEATABLE READ。操作:①会话1:BEGIN; SELECT * FROM t1 WHERE id=1;(创建ReadView,val=10)②会话2:UPDATE t1 SET val=20 WHERE id=1; COMMIT;③会话1:SELECT * FROM t1 WHERE id=1;(仍读到val=10)。验证:会话1两次读取结果一致(val=10),体现可重复读;对比两版本ReadView创建耗时(performance_schema.events_statements_history);源码参照:storage/innobase/trx/trx0trx.cc的read_view_open_now()、storage/innobase/read/read0read.cc的版本可见性判定逻辑。"
+    }
+  },
+  {
+    "id": 24,
+    "input": "InnoDB redo日志刷盘失败在8.0.37→8.0.38版本对中何时进入IO错误分支?(storage/innobase/log/log0write.cc / log_write_up_to())",
+    "expected_output": {
+      "分析条件组合": "核心条件(IO层异常):1)配置条件:innodb_flush_log_at_trx_commit=1(每次提交刷盘)或=2(每秒刷盘);2)IO失败:磁盘满、文件系统错误、redo log文件损坏、fsync()调用失败;3)触发时机:事务提交时调用log_write_up_to()写入并刷盘redo log;4)版本微调:8.0.38增强IO错误重试机制(最多3次),减少偶发性IO错误导致的事务失败。分支行为:IO错误→进入错误分支,事务提交失败,返回ER_ERROR_ON_WRITE错误,MySQL可能进入只读模式(innodb_force_recovery);副作用:数据库可用性下降,需管理员排查存储问题。",
+      "提供复现步骤": "环境:8.0.37与8.0.38,innodb_flush_log_at_trx_commit=1,redo log目录独立磁盘。操作:①通过dd填满redo log所在磁盘;②执行INSERT INTO t1 VALUES(1); COMMIT;③恢复磁盘空间后重试。验证:返回'Error writing to InnoDB redo log (disk full)',事务失败;8.0.38可能触发重试(错误日志记录'Retrying redo log write');源码参照:storage/innobase/log/log0write.cc的log_write_up_to()刷盘逻辑、log_io_complete()错误处理、8.0.38重试优化commit。"
+    }
+  },
+  {
+    "id": 25,
+    "input": "InnoDB表空间扩展失败在8.0.38→8.0.39版本对中何时进入空间不足分支?(storage/innobase/fsp/fsp0fsp.cc / fsp_try_extend_data_file())",
+    "expected_output": {
+      "分析条件组合": "核心条件(资源限制):1)空间条件:表空间文件达到innodb_data_file_path配置的max大小,或磁盘剩余空间不足;2)触发时机:插入/更新操作需要分配新的页,调用fsp_try_extend_data_file()尝试扩展;3)自动扩展:innodb_data_file_path未配置autoextend或配置max限制;4)版本微调:8.0.39优化扩展失败的错误提示,区分'达到max限制'与'磁盘满'。分支行为:扩展失败→进入错误分支,操作回滚,返回ER_RECORD_FILE_FULL或ER_DISK_FULL错误;副作用:表无法写入新数据,需扩容或清理空间。",
+      "提供复现步骤": "环境:8.0.38与8.0.39,配置innodb_data_file_path='ibdata1:10M:autoextend:max:50M'。操作:①创建大表t1并批量插入至表空间接近50M;②继续插入直至超过max限制。验证:返回'The table is full'(8.0.38)或'Tablespace limit reached: ibdata1 max size 50M'(8.0.39提示更明确);SHOW ENGINE INNODB STATUS显示表空间使用情况;源码参照:storage/innobase/fsp/fsp0fsp.cc的fsp_try_extend_data_file()扩展逻辑、8.0.39错误提示优化commit。"
+    }
+  },
+  {
+    "id": 26,
+    "input": "ALTER TABLE加字段时的元数据锁冲突在8.0.35→8.0.36版本对中何时进入等待/超时分支?(sql/sql_table.cc / mysql_alter_table())",
+    "expected_output": {
+      "分析条件组合": "核心条件(锁冲突):1)元数据锁:ALTER TABLE需获取EXCLUSIVE元数据锁,与其他会话的SHARED/SHARED_WRITE锁冲突;2)冲突场景:长时间运行的SELECT/DML持有SHARED锁,或未提交事务持有锁;3)超时配置:lock_wait_timeout(默认31536000秒);4)版本微调:8.0.36优化元数据锁等待队列,减少饥饿现象。分支行为:锁冲突→进入等待分支,直至获得锁或超时;超时返回ER_LOCK_WAIT_TIMEOUT;副作用:DDL阻塞期间阻止其他DDL/DML操作。",
+      "提供复现步骤": "环境:8.0.35与8.0.36,lock_wait_timeout=10。操作:①会话1:BEGIN; SELECT * FROM t1;(持有SHARED元数据锁,不提交)②会话2:ALTER TABLE t1 ADD COLUMN col2 INT;(等待EXCLUSIVE锁)③等待10秒观察。验证:会话2等待10秒后返回'Lock wait timeout exceeded',DDL失败;performance_schema.metadata_locks显示锁等待详情;对比两版本等待队列行为;源码参照:sql/sql_table.cc的mysql_alter_table()元数据锁获取逻辑、sql/mdl.cc的MDL_context::acquire_lock()。"
+    }
+  },
+  {
+    "id": 27,
+    "input": "CREATE TABLE违反字符集约束在8.0.38→8.0.39版本对中何时进入拒绝分支?(sql/sql_table.cc / mysql_create_table_no_lock())",
+    "expected_output": {
+      "分析条件组合": "核心条件(字符集校验):1)约束条件:表字符集与列字符集不兼容(如表utf8mb4,列latin1且含utf8mb4数据);2)校验触发:CREATE TABLE时调用check_charset_compatibility()校验;3)版本差异:8.0.39增强校验逻辑,禁止不兼容的排序规则组合(如utf8mb4_bin表与utf8mb4_general_ci列);4)配置影响:character_set_server默认字符集。分支行为:校验失败→进入拒绝分支,返回ER_COLLATION_CHARSET_MISMATCH错误,表创建失败;副作用:避免字符集不一致导致的数据损坏。",
+      "提供复现步骤": "环境:8.0.38与8.0.39,character_set_server=utf8mb4。操作:①执行CREATE TABLE t1 (id INT, col1 VARCHAR(100) CHARACTER SET latin1) DEFAULT CHARSET=utf8mb4;(8.0.38可能成功)②8.0.39执行CREATE TABLE t2 (id INT, col1 VARCHAR(100) COLLATE utf8mb4_general_ci) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;。验证:8.0.39返回'COLLATION utf8mb4_general_ci is not valid for CHARACTER SET utf8mb4 with COLLATE utf8mb4_bin',表创建失败;源码参照:sql/sql_table.cc的mysql_create_table_no_lock()、sql/charset.cc的check_charset_compatibility()、8.0.39校验增强commit。"
+    }
+  },
+  {
+    "id": 28,
+    "input": "DROP TABLE时表不存在在8.0.35→8.0.36版本对中何时进入IF EXISTS跳过分支?(sql/sql_table.cc / mysql_rm_table())",
+    "expected_output": {
+      "分析条件组合": "核心条件(语法控制):1)语法条件:使用DROP TABLE IF EXISTS语法;2)表状态:表不存在于数据字典(information_schema.TABLES);3)分支选择:IF EXISTS→跳过不存在表的删除,返回NOTE警告;不带IF EXISTS→进入错误分支,返回ER_BAD_TABLE_ERROR;4)版本稳定:8.0.35→8.0.36该逻辑无变化。分支行为:IF EXISTS+表不存在→跳过分支,返回'1 row affected, 1 warning',warning内容'Unknown table xxx';不带IF EXISTS→返回错误。",
+      "提供复现步骤": "环境:8.0.35与8.0.36。操作:①执行DROP TABLE IF EXISTS non_existent_table;②执行SHOW WARNINGS;③执行DROP TABLE non_existent_table;(不带IF EXISTS)。验证:①返回成功,SHOW WARNINGS显示'Unknown table non_existent_table';②返回'Unknown table non_existent_table'错误;源码参照:sql/sql_table.cc的mysql_rm_table()表存在性校验逻辑、IF EXISTS分支处理。"
+    }
+  },
+  {
+    "id": 29,
+    "input": "TRUNCATE TABLE跨存储引擎在8.0.37→8.0.38版本对中何时进入不支持分支?(sql/sql_truncate.cc / Sql_cmd_truncate_table::execute())",
+    "expected_output": {
+      "分析条件组合": "核心条件(存储引擎限制):1)存储引擎:非事务性存储引擎(如MyISAM)或不支持TRUNCATE的存储引擎;2)特殊表:系统表/临时表/分区表的部分场景;3)版本微调:8.0.38优化TRUNCATE对分区表的支持,减少不支持场景;4)实现差异:InnoDB通过删除表空间文件实现,MyISAM通过删除数据文件实现。分支行为:不支持→进入错误分支,返回ER_ILLEGAL_HA或降级为DELETE FROM(无TRUNCATE特性);副作用:性能下降(DELETE逐行删除)。",
+      "提供复现步骤": "环境:8.0.37与8.0.38。操作:①创建MyISAM表:CREATE TABLE t1 (id INT) ENGINE=MyISAM;②执行TRUNCATE TABLE t1;③创建带外键的InnoDB表t2,t3,执行TRUNCATE TABLE t2;(违反外键约束)。验证:①MyISAM表TRUNCATE成功,但性能不如InnoDB;②带外键表返回'Cannot truncate a table referenced in a foreign key constraint';对比两版本对分区表TRUNCATE的支持;源码参照:sql/sql_truncate.cc的Sql_cmd_truncate_table::execute()存储引擎校验逻辑、handler::truncate()接口。"
+    }
+  },
+  {
+    "id": 30,
+    "input": "临时表内存不足在8.0.34→8.0.35版本对中何时进入磁盘临时表转换分支?(sql/temp_table.cc / create_ondisk_from_heap())",
+    "expected_output": {
+      "分析条件组合": "核心条件(内存限制):1)内存配置:tmp_table_size与max_heap_table_size限制内存临时表大小;2)触发场景:GROUP BY/ORDER BY/DISTINCT等操作生成的内存临时表超过限制;3)转换时机:内存表插入失败时,调用create_ondisk_from_heap()转换为磁盘临时表(InnoDB);4)版本微调:8.0.35优化转换性能,减少数据拷贝开销。分支行为:内存不足→进入转换分支,将内存表数据拷贝至InnoDB临时表,性能下降;副作用:Created_tmp_disk_tables状态变量+1,tmpdir磁盘占用增加。",
+      "提供复现步骤": "环境:8.0.34与8.0.35,tmp_table_size=1M,max_heap_table_size=1M。操作:①执行SELECT col1, COUNT(*) FROM large_table GROUP BY col1;(生成超1M的内存临时表)②查询SHOW SESSION STATUS LIKE 'Created_tmp%';。验证:Created_tmp_disk_tables计数增加,查询耗时增加;对比两版本转换耗时(performance_schema.events_statements_history);源码参照:sql/temp_table.cc的create_ondisk_from_heap()转换逻辑、sql/sql_union.cc的临时表创建。"
+    }
+  },
+  {
+    "id": 31,
+    "input": "临时表与GTID冲突在8.0.37→8.0.38版本对中何时进入拒绝分支?(sql/gtid_service.cc / gtid_pre_statement_checks())",
+    "expected_output": {
+      "分析条件组合": "核心条件(一致性约束):1)GTID配置:enforce_gtid_consistency=ON;2)操作类型:在事务内创建/删除临时表(CREATE TEMPORARY TABLE/DROP TEMPORARY TABLE);3)校验时机:语句执行前调用gtid_pre_statement_checks()校验;4)版本微调:8.0.38放宽非事务临时表的限制,仅事务内临时表受限。分支行为:校验失败→进入拒绝分支,返回ER_GTID_UNSAFE_CREATE_DROP_TEMPORARY_TABLE_IN_TRANSACTION错误;副作用:保证GTID一致性,避免复制异常。",
+      "提供复现步骤": "环境:8.0.37与8.0.38,gtid_mode=ON,enforce_gtid_consistency=ON。操作:①执行BEGIN; CREATE TEMPORARY TABLE tmp1 (id INT); COMMIT;②对比8.0.38:执行CREATE TEMPORARY TABLE tmp2 (id INT);(事务外)。验证:①8.0.37返回'Statement violates GTID consistency: CREATE TEMPORARY TABLE inside transaction';②8.0.38事务外创建成功,事务内仍报错;源码参照:sql/gtid_service.cc的gtid_pre_statement_checks()临时表校验逻辑、8.0.38放宽限制commit。"
+    }
+  },
+  {
+    "id": 32,
+    "input": "临时表索引创建失败在8.0.35→8.0.36版本对中何时进入内存/磁盘不足分支?(sql/sql_table.cc / mysql_alter_table()针对临时表)",
+    "expected_output": {
+      "分析条件组合": "核心条件(资源限制):1)内存临时表:索引大小超过max_heap_table_size;2)磁盘临时表:tmpdir磁盘空间不足或inode耗尽;3)触发时机:ALTER TABLE tmp_table ADD INDEX执行时;4)版本微调:8.0.36增强错误提示,区分内存不足与磁盘不足。分支行为:资源不足→进入错误分支,返回ER_RECORD_FILE_FULL(内存表)或ER_DISK_FULL(磁盘表);副作用:临时表索引缺失,查询性能下降。",
+      "提供复现步骤": "环境:8.0.35与8.0.36,max_heap_table_size=1M,tmpdir磁盘配额10M。操作:①创建内存临时表:CREATE TEMPORARY TABLE tmp1 (id INT, data VARCHAR(10000)) ENGINE=MEMORY;②插入数据至接近1M;③执行ALTER TABLE tmp1 ADD INDEX idx_data(data);④创建磁盘临时表后填满tmpdir,尝试添加索引。验证:①返回'The table is full'(8.0.35)或'Memory temporary table full'(8.0.36);②返回'Disk full in tmpdir'(8.0.36更明确);源码参照:sql/sql_table.cc的mysql_alter_table()索引创建、handler::add_index()资源检查。"
+    }
+  },
+  {
+    "id": 33,
+    "input": "NDB集群节点心跳超时在8.0.36→8.0.37版本对中何时进入节点隔离分支?(storage/ndb/src/kernel/vm/ndb_heartbeat.cc / checkHeartbeat())",
+    "expected_output": {
+      "分析条件组合": "核心条件(网络/负载):1)心跳配置:HeartbeatIntervalDbDb(默认1500ms)与HeartbeatIntervalDbApi(默认1500ms);2)超时判定:连续3次心跳未收到(约4.5秒);3)触发场景:网络分区/节点负载过高/进程挂起;4)版本微调:8.0.37优化心跳检测算法,减少误报(负载尖刺导致的假超时)。分支行为:超时→进入节点隔离分支,标记节点为NOT_STARTED,触发集群重组;副作用:数据重分布,服务短暂不可用。",
+      "提供复现步骤": "环境:8.0.36与8.0.37 NDB集群(2数据节点+1 SQL节点),HeartbeatIntervalDbDb=1500。操作:①使用iptables阻断节点1与节点2的通信:iptables -A INPUT -s <node2_ip> -j DROP;②等待约5秒观察集群状态(ndb_mgm -e 'SHOW');③对比两版本误报率(人为负载尖刺测试)。验证:节点2被标记为NOT_STARTED,集群日志记录'Node 2 missed heartbeat';8.0.37误报率降低;源码参照:storage/ndb/src/kernel/vm/ndb_heartbeat.cc的checkHeartbeat()超时判定、8.0.37优化commit。"
+    }
+  },
+  {
+    "id": 34,
+    "input": "NDB事务提交失败在8.0.38→8.0.39版本对中何时进入重试/回滚分支?(storage/ndb/src/ndbapi/NdbTransaction.cpp / execute())",
+    "expected_output": {
+      "分析条件组合": "核心条件(多场景):1)资源不足:数据节点内存不足(DataMemory/IndexMemory耗尽);2)冲突:并发事务修改同一行,导致行锁冲突;3)网络异常:提交时与数据节点通信中断;4)版本微调:8.0.39优化重试逻辑,对临时性错误(如内存不足)自动重试最多3次。分支行为:临时性错误→进入重试分支,自动重试;永久性错误(如冲突)→进入回滚分支,返回NdbError;副作用:事务延迟增加或失败。",
+      "提供复现步骤": "环境:8.0.38与8.0.39 NDB集群,DataMemory=80M。操作:①并发执行大量INSERT事务耗尽DataMemory;②观察事务失败与重试;③对比两版本重试行为(错误日志)。验证:8.0.38直接返回'Out of memory in NDB',8.0.39日志显示'Retrying NDB transaction (attempt 1/3)';源码参照:storage/ndb/src/ndbapi/NdbTransaction.cpp的execute()重试逻辑、8.0.39重试优化commit。"
+    }
+  },
+  {
+    "id": 35,
+    "input": "NDB表分区键校验在8.0.36→8.0.37版本对中何时进入不匹配分支?(storage/ndb/src/ndbapi/NdbDictionary.cpp / createTable())",
+    "expected_output": {
+      "分析条件组合": "核心条件(分区约束):1)分区键:NDB表必须包含主键/唯一键作为分区键;2)校验时机:CREATE TABLE时调用createTable()校验分区键合法性;3)不匹配场景:分区键非主键/唯一键的子集,或分区键类型不支持(如BLOB);4)版本稳定:8.0.36→8.0.37该校验逻辑无变化。分支行为:校验失败→进入不匹配分支,返回ER_UNIQUE_KEY_NEED_ALL_FIELDS_IN_PF或NDB特定错误;副作用:表创建失败。",
+      "提供复现步骤": "环境:8.0.36与8.0.37 NDB集群。操作:①执行CREATE TABLE t1 (id INT, col1 INT, PRIMARY KEY(id)) ENGINE=NDB PARTITION BY HASH(col1) PARTITIONS 4;(col1非主键)②执行CREATE TABLE t2 (id INT, col1 BLOB, PRIMARY KEY(id)) ENGINE=NDB PARTITION BY HASH(col1) PARTITIONS 4;(BLOB不支持)。验证:①返回'A PRIMARY KEY must include all columns in the partitioning function';②返回'NDB does not support BLOB as partition key';源码参照:storage/ndb/src/ndbapi/NdbDictionary.cpp的createTable()分区键校验、sql/sql_partition.cc的NDB分区限制。"
+    }
+  },
+  {
+    "id": 36,
+    "input": "审计日志按用户过滤在8.0.33→8.0.34版本对中何时进入跳过分支?(plugin/audit_log/audit_log.c / audit_log_filter_user())",
+    "expected_output": {
+      "分析条件组合": "核心条件(配置驱动):1)过滤配置:audit_log_include_accounts或audit_log_exclude_accounts设置;2)用户匹配:当前连接用户与过滤列表匹配;3)跳过逻辑:exclude列表匹配→跳过记录;include列表不匹配→跳过记录;4)版本微调:8.0.34优化匹配算法,支持通配符(如'test_%')。分支行为:过滤匹配→跳过分支,不写入审计日志;不匹配→正常记录。",
+      "提供复现步骤": "环境:8.0.33与8.0.34,安装audit_log插件。操作:①设置audit_log_exclude_accounts='root@localhost,test@%';②root@localhost执行SELECT * FROM t1;③test@192.168.1.100执行INSERT INTO t1 VALUES(1);④user1@localhost执行UPDATE t1 SET val=2;。验证:审计日志仅包含user1的操作,root与test被过滤;8.0.34通配符'test@%'匹配所有test用户;源码参照:plugin/audit_log/audit_log.c的audit_log_filter_user()过滤逻辑、8.0.34通配符支持commit。"
+    }
+  },
+  {
+    "id": 37,
+    "input": "审计日志按操作类型跳过在8.0.35→8.0.36版本对中何时进入跳过分支?(plugin/audit_log/audit_log.c / audit_log_filter_event())",
+    "expected_output": {
+      "分析条件组合": "核心条件(事件类型过滤):1)过滤配置:audit_log_policy设置(ALL/LOGINS/QUERIES/NONE);2)事件类型:CONNECT/QUERY/TABLE_ACCESS等;3)跳过逻辑:policy=LOGINS→仅记录连接事件,跳过QUERY;policy=QUERIES→仅记录查询,跳过CONNECT;4)版本微调:8.0.36新增NONE策略,完全禁用审计日志。分支行为:策略不匹配→跳过分支,不写入日志;匹配→正常记录。",
+      "提供复现步骤": "环境:8.0.35与8.0.36,audit_log插件启用。操作:①设置audit_log_policy='LOGINS';②执行连接操作与SELECT查询;③设置audit_log_policy='NONE';(8.0.36)④执行任意操作。验证:①审计日志仅包含连接事件,无查询记录;②8.0.36设置NONE后日志完全停止;源码参照:plugin/audit_log/audit_log.c的audit_log_filter_event()事件过滤、8.0.36 NONE策略commit。"
+    }
+  },
+  {
+    "id": 38,
+    "input": "审计日志磁盘满在8.0.35→8.0.36版本对中何时进入丢弃/阻塞分支?(plugin/audit_log/audit_log.c / audit_log_write())",
+    "expected_output": {
+      "分析条件组合": "核心条件(IO异常):1)磁盘状态:audit_log_file所在磁盘空间耗尽;2)策略配置:audit_log_rotate_on_size控制日志滚动,audit_log_flush控制刷盘策略;3)分支选择:磁盘满→根据audit_log_strategy(ASYNCHRONOUS/PERFORMANCE/SEMISYNCHRONOUS)选择丢弃或阻塞;4)版本微调:8.0.36优化ASYNCHRONOUS策略下的丢弃提示。分支行为:ASYNCHRONOUS→丢弃日志,记录警告;SEMISYNCHRONOUS→阻塞操作,直至磁盘空间恢复;副作用:日志丢失或性能下降。",
+      "提供复现步骤": "环境:8.0.35与8.0.36,audit_log_strategy='ASYNCHRONOUS',audit_log目录独立磁盘。操作:①填满audit_log磁盘;②执行大量DML操作;③观察错误日志与审计日志;④对比SEMISYNCHRONOUS策略。验证:ASYNCHRONOUS策略下错误日志记录'Audit log write failed: disk full, events dropped',操作不阻塞;SEMISYNCHRONOUS下操作阻塞至磁盘恢复;源码参照:plugin/audit_log/audit_log.c的audit_log_write()策略分支处理。"
+    }
+  },
+  {
+    "id": 39,
+    "input": "系统变量值越界校验在8.0.32→8.0.33版本对中何时进入拒绝分支?(sql/sys_vars.cc / Sys_var_integer::update())",
+    "expected_output": {
+      "分析条件组合": "核心条件(范围校验):1)变量定义:系统变量有min/max范围限制(如max_connections:1-100000);2)设置时机:SET GLOBAL/SESSION var=value执行时;3)校验逻辑:Sys_var_integer::update()比对value与[min,max];4)版本微调:8.0.33增强部分变量的动态调整安全性(如innodb_buffer_pool_size需内存对齐)。分支行为:越界→进入拒绝分支,返回ER_WRONG_VALUE_FOR_VAR错误;合法→更新变量值。",
+      "提供复现步骤": "环境:8.0.32与8.0.33。操作:①执行SET GLOBAL max_connections=100001;(超过max)②执行SET GLOBAL max_connections=0;(低于min)③8.0.33执行SET GLOBAL innodb_buffer_pool_size=123456789;(未对齐)。验证:①返回'Variable max_connections can't be set to the value of 100001';②返回'Variable max_connections can't be set to the value of 0';③8.0.33返回'innodb_buffer_pool_size must be aligned to innodb_buffer_pool_chunk_size';源码参照:sql/sys_vars.cc的Sys_var_integer::update()范围校验、8.0.33对齐校验commit。"
+    }
+  },
+  {
+    "id": 40,
+    "input": "只读系统变量修改在8.0.37→8.0.38版本对中何时进入拒绝分支?(sql/sys_vars.cc / sys_var::check())",
+    "expected_output": {
+      "分析条件组合": "核心条件(属性限制):1)变量属性:READONLY标记(如datadir、version_comment);2)修改尝试:运行时执行SET GLOBAL/SESSION var=value;3)校验时机:sys_var::check()检查READONLY属性;4)版本稳定:8.0.37→8.0.38该机制无变化。分支行为:READONLY变量→进入拒绝分支,返回ER_INCORRECT_GLOBAL_LOCAL_VAR错误;可修改变量→继续执行。",
+      "提供复现步骤": "环境:8.0.37与8.0.38。操作:①执行SET GLOBAL datadir='/new/path';②执行SET GLOBAL version_comment='custom';③执行SET GLOBAL max_connections=500;(可修改变量)。验证:①②返回'Variable datadir/version_comment is a read only variable';③成功修改;源码参照:sql/sys_vars.cc的sys_var::check()属性校验、READONLY变量定义。"
+    }
+  },
+  {
+    "id": 41,
+    "input": "动态系统变量生效失败在8.0.37→8.0.38版本对中何时进入回滚分支?(sql/sys_vars.cc / Sys_var::global_update())",
+    "expected_output": {
+      "分析条件组合": "核心条件(副作用失败):1)变量类型:动态变量但有复杂副作用(如innodb_buffer_pool_size需重新分配内存);2)失败场景:内存分配失败、依赖模块初始化失败;3)回滚时机:global_update()执行副作用逻辑失败;4)版本微调:8.0.38增强回滚机制,确保变量值与实际状态一致。分支行为:副作用失败→进入回滚分支,恢复旧值,返回错误;成功→新值生效。",
+      "提供复现步骤": "环境:8.0.37与8.0.38。操作:①当前innodb_buffer_pool_size=128M,可用内存仅100M;②执行SET GLOBAL innodb_buffer_pool_size=1G;(内存不足)③对比两版本变量值与实际buffer pool大小。验证:返回'Failed to allocate memory for innodb_buffer_pool_size',变量值回滚至128M;8.0.38确保SHOW VARIABLES与实际一致;源码参照:sql/sys_vars.cc的Sys_var::global_update()副作用逻辑、8.0.38回滚优化commit。"
+    }
+  },
+  {
+    "id": 42,
+    "input": "字符集转换失败在8.0.34→8.0.35版本对中何时进入截断/错误分支?(sql/sql_string.cc / String::copy())",
+    "expected_output": {
+      "分析条件组合": "核心条件(编码冲突):1)转换场景:INSERT/UPDATE时列字符集与输入字符集不同;2)失败类型:源字符集包含目标字符集不支持的字符(如utf8mb4→latin1时含emoji);3)模式配置:sql_mode包含STRICT_TRANS_TABLES→进入错误分支;不包含→进入截断分支;4)版本微调:8.0.35增强错误提示,明确指出不可转换的字符。分支行为:STRICT模式→返回ER_TRUNCATED_WRONG_VALUE_FOR_FIELD错误;非STRICT→截断字符,记录警告;副作用:数据损坏或插入失败。",
+      "提供复现步骤": "环境:8.0.34与8.0.35,创建表t1(col1 VARCHAR(100) CHARACTER SET latin1)。操作:①sql_mode='STRICT_TRANS_TABLES':INSERT INTO t1 VALUES('测试emoji😀');②sql_mode='':INSERT INTO t1 VALUES('测试emoji😀');③对比两版本错误提示。验证:①返回'Incorrect string value'错误;②插入成功但emoji被截断,SHOW WARNINGS显示警告;8.0.35错误提示包含'character U+1F600';源码参照:sql/sql_string.cc的String::copy()转换逻辑、sql/field.cc的字符集校验。"
+    }
+  },
+  {
+    "id": 43,
+    "input": "排序规则不兼容在8.0.36→8.0.37版本对中何时进入JOIN失败分支?(sql/item_cmpfunc.cc / Arg_comparator::set_cmp_func())",
+    "expected_output": {
+      "分析条件组合": "核心条件(排序规则冲突):1)JOIN条件:两表关联字段使用不兼容的排序规则(如utf8mb4_general_ci vs utf8mb4_bin);2)校验时机:Arg_comparator::set_cmp_func()初始化比较函数时检查排序规则兼容性;3)兼容性:相同字符集但不同排序规则→需显式COLLATE指定;不同字符集→必须转换;4)版本微调:8.0.37优化错误提示,建议使用COLLATE解决。分支行为:不兼容→进入失败分支,返回ER_CANT_AGGREGATE_2COLLATIONS错误;兼容→正常JOIN。",
+      "提供复现步骤": "环境:8.0.36与8.0.37,创建t1(col1 VARCHAR(100) COLLATE utf8mb4_general_ci)、t2(col1 VARCHAR(100) COLLATE utf8mb4_bin)。操作:①执行SELECT * FROM t1 JOIN t2 ON t1.col1=t2.col1;②对比8.0.37错误提示;③使用COLLATE修复:SELECT * FROM t1 JOIN t2 ON t1.col1 COLLATE utf8mb4_bin=t2.col1;。验证:①返回'Illegal mix of collations';②8.0.37提示'Hint: use COLLATE clause';③修复后JOIN成功;源码参照:sql/item_cmpfunc.cc的Arg_comparator::set_cmp_func()排序规则校验、8.0.37提示优化commit。"
+    }
+  },
+  {
+    "id": 44,
+    "input": "慢查询阈值动态调整在8.0.33→8.0.34版本对中何时进入记录分支?(sql/log.cc / log_slow_statement())",
+    "expected_output": {
+      "分析条件组合": "核心条件(阈值比对):1)配置:long_query_time设置慢查询阈值(默认10秒);2)记录条件:查询执行时间≥long_query_time;3)动态调整:SET GLOBAL/SESSION long_query_time立即生效;4)版本微调:8.0.34支持微秒级精度(之前仅秒级)。分支行为:执行时间≥阈值→进入记录分支,写入慢查询日志;否则跳过;副作用:慢查询日志增长。",
+      "提供复现步骤": "环境:8.0.33与8.0.34,slow_query_log=ON,long_query_time=2。操作:①执行SELECT SLEEP(3);(触发慢查询)②执行SELECT SLEEP(1);(不触发)③8.0.34:SET SESSION long_query_time=0.5; SELECT SLEEP(1);(触发)④对比两版本微秒精度。验证:①慢查询日志包含SLEEP(3),Query_time:3.xxx;②无SLEEP(1)记录;③8.0.34支持0.5秒阈值,8.0.33最小1秒;源码参照:sql/log.cc的log_slow_statement()阈值比对、8.0.34微秒精度commit。"
+    }
+  },
+  {
+    "id": 45,
+    "input": "慢查询日志按执行时间过滤在8.0.38→8.0.39版本对中何时进入额外记录分支?(sql/log.cc / log_slow_applicable())",
+    "expected_output": {
+      "分析条件组合": "核心条件(扩展过滤):1)基础条件:log_queries_not_using_indexes=ON→记录未使用索引的查询(即使未达long_query_time);2)额外条件:min_examined_row_limit→仅记录扫描行数≥该值的查询;3)版本微调:8.0.39新增log_slow_extra=ON,记录额外统计信息(Rows_sent/Rows_examined)。分支行为:满足扩展条件→进入额外记录分支,写入慢查询日志;否则跳过。",
+      "提供复现步骤": "环境:8.0.38与8.0.39,log_queries_not_using_indexes=ON,min_examined_row_limit=1000。操作:①执行SELECT * FROM t1 WHERE col1='val';(无索引,扫描100行)②执行SELECT * FROM t2 WHERE col1='val';(无索引,扫描2000行)③8.0.39:SET GLOBAL log_slow_extra=ON;重复②。验证:①不记录(扫描行<1000);②记录;③8.0.39慢查询日志包含'# Rows_sent: xxx  Rows_examined: 2000';源码参照:sql/log.cc的log_slow_applicable()扩展过滤逻辑、8.0.39 log_slow_extra功能commit。"
+    }
+  },
+  {
+    "id": 46,
+    "input": "线程池连接数超限在8.0.35→8.0.36版本对中何时进入拒绝分支?(sql/conn_handler/connection_acceptor.h / check_connection_count())",
+    "expected_output": {
+      "分析条件组合": "核心条件(连接限制):1)配置:max_connections设置最大连接数(默认151);2)当前状态:活跃连接数≥max_connections;3)超级权限:拥有SUPER/CONNECTION_ADMIN权限的用户可突破限制(额外reserved连接);4)版本微调:8.0.36优化连接计数精度,减少误拒绝。分支行为:超限且无特权→进入拒绝分支,返回ER_CON_COUNT_ERROR;有特权→使用reserved连接;副作用:客户端连接失败。",
+      "提供复现步骤": "环境:8.0.35与8.0.36,max_connections=10,创建无特权用户test、有CONNECTION_ADMIN权限用户admin。操作:①创建10个test用户连接;②test用户尝试第11个连接;③admin用户尝试连接。验证:②返回'Too many connections'错误;③admin连接成功(使用reserved);对比两版本误拒绝率(并发压测);源码参照:sql/conn_handler/connection_acceptor.h的check_connection_count()限制校验、8.0.36计数优化commit。"
+    }
+  },
+  {
+    "id": 47,
+    "input": "线程创建失败在8.0.37→8.0.38版本对中何时进入错误分支?(mysys/my_thread.c / my_thread_create())",
+    "expected_output": {
+      "分析条件组合": "核心条件(系统资源):1)资源限制:系统线程数达到ulimit -u限制、内存不足;2)触发场景:新连接到达需创建工作线程,或后台线程(如purge thread)创建;3)失败处理:my_thread_create()返回错误码(errno=EAGAIN/ENOMEM);4)版本微调:8.0.38增强错误日志,记录详细的资源限制信息。分支行为:创建失败→进入错误分支,连接被拒绝或后台任务延迟;副作用:服务降级。",
+      "提供复现步骤": "环境:8.0.37与8.0.38,设置ulimit -u 1024(线程数限制)。操作:①启动MySQL并创建大量连接逼近1024限制;②尝试新连接;③观察错误日志。验证:返回'Can't create thread to handle new connection',错误日志记录'my_thread_create failed: Resource temporarily unavailable';8.0.38日志包含'ulimit -u: 1024, current threads: 1023';源码参照:mysys/my_thread.c的my_thread_create()错误处理、8.0.38日志增强commit。"
+    }
+  },
+  {
+    "id": 48,
+    "input": "InnoDB缓冲池内存分配失败在8.0.32→8.0.33版本对中何时进入启动失败分支?(storage/innobase/buf/buf0buf.cc / buf_pool_init())",
+    "expected_output": {
+      "分析条件组合": "核心条件(启动阶段):1)配置:innodb_buffer_pool_size设置缓冲池大小;2)内存分配:启动时调用buf_pool_init()分配大块连续内存;3)失败场景:可用内存<innodb_buffer_pool_size、内存碎片严重、huge pages配置错误;4)版本微调:8.0.33优化分配策略,支持分段分配减少失败概率。分支行为:分配失败→进入启动失败分支,MySQL启动中止,错误日志记录'Cannot allocate memory for buffer pool';副作用:服务不可用。",
+      "提供复现步骤": "环境:8.0.32与8.0.33,可用内存2G,配置innodb_buffer_pool_size=4G。操作:①启动MySQL;②观察错误日志与启动状态;③调整为innodb_buffer_pool_size=1G重启;④对比两版本分段分配行为。验证:①启动失败,错误日志'Cannot allocate memory for buffer pool (requested 4G, available 2G)';②调整后启动成功;③8.0.33尝试分段分配(日志显示'Using segment allocation for buffer pool');源码参照:storage/innobase/buf/buf0buf.cc的buf_pool_init()分配逻辑、8.0.33分段优化commit。"
+    }
+  },
+  {
+    "id": 49,
+    "input": "Binlog缓存内存不足在8.0.39→8.0.40版本对中何时进入磁盘溢出分支?(sql/binlog.cc / binlog_cache_data::write_event())",
+    "expected_output": {
+      "分析条件组合": "核心条件(事务大小):1)配置:binlog_cache_size设置事务级binlog缓存(默认32K);2)溢出条件:单事务binlog事件总大小>binlog_cache_size;3)溢出处理:write_event()将缓存内容写入临时文件(tmpdir);4)版本微调:8.0.40优化溢出策略,动态调整缓存大小(最大至max_binlog_cache_size)。分支行为:内存不足→进入磁盘溢出分支,使用临时文件,Binlog_cache_disk_use+1;副作用:性能下降,tmpdir磁盘占用。",
+      "提供复现步骤": "环境:8.0.39与8.0.40,binlog_cache_size=32K,max_binlog_cache_size=1M。操作:①执行大事务:BEGIN; INSERT INTO t1 SELECT * FROM large_table LIMIT 10000; COMMIT;(binlog>32K)②查询SHOW STATUS LIKE 'Binlog_cache%';③对比两版本溢出行为。验证:Binlog_cache_disk_use计数增加;8.0.40尝试扩展缓存至64K(日志显示'Expanding binlog cache to 64K'),减少磁盘溢出;源码参照:sql/binlog.cc的binlog_cache_data::write_event()溢出处理、8.0.40动态扩展commit。"
+    }
+  },
+  {
+    "id": 50,
+    "input": "从库IO线程断开重连在8.0.36→8.0.37版本对中何时进入自动重连分支?(sql/rpl_replica.cc / handle_slave_io())",
+    "expected_output": {
+      "分析条件组合": "核心条件(网络中断):1)连接状态:从库IO线程与主库连接中断(网络抖动/主库重启/防火墙);2)重连配置:master_retry_count(重试次数)与master_connect_retry(重试间隔,默认60秒);3)触发时机:IO线程检测到连接断开(read timeout/connection lost);4)版本微调:8.0.37优化重连策略,减少无效重试(如主库binlog已清理)。分支行为:连接断开→进入自动重连分支,按master_connect_retry间隔重试,直至成功或达到master_retry_count;副作用:复制延迟增加。",
+      "提供复现步骤": "环境:8.0.36与8.0.37主从复制,master_retry_count=3,master_connect_retry=10。操作:①从库IO线程运行中,使用iptables断开主从网络:iptables -A OUTPUT -d <master_ip> -j DROP;②观察从库IO线程状态(SHOW SLAVE STATUS);③等待30秒恢复网络;④对比两版本重连日志。验证:从库错误日志记录'error reconnecting to master',每10秒重试一次,最多3次;8.0.37日志包含'Skipping reconnect: master purged required binlog';网络恢复后自动重连成功;源码参照:sql/rpl_replica.cc的handle_slave_io()重连逻辑、8.0.37智能跳过优化commit。"
+    }
+  }
+]
