@@ -1,0 +1,362 @@
+[
+  {
+    "id": 11,
+    "输入": "日志消息 \"InnoDB: Transactions deadlock detected, dumping detailed information\"",
+    "期望输出": {
+      "文件位置": "storage/innobase/lock/lock0lock.cc",
+      "上下文代码": "ib::info(ER_IB_MSG_643) << \"Transactions deadlock detected, dumping\" << \" detailed information.\";",
+      "函数与场景": "Deadlock::report函数内，InnoDB锁模块检测到事务死锁（循环等待）时，启用srv_print_all_deadlocks选项后输出的详细死锁信息日志"
+    }
+  },
+  {
+    "id": 12,
+    "输入": "日志消息 \"InnoDB: There appear to be . user\"",
+    "期望输出": {
+      "文件位置": "storage/innobase/lock/lock0wait.cc",
+      "上下文代码": "ib::error(ER_IB_MSG_646) << \"There appear to be \" << srv_max_n_threads << \" user\"",
+      "函数与场景": "lock_wait_timeout_thread函数内，InnoDB检测到活跃线程数达到最大限制时的错误日志"
+    }
+  },
+  {
+    "id": 13,
+    "输入": "日志消息 \"InnoDB: Transaction id . was in the deadlock\"",
+    "期望输出": {
+      "文件位置": "storage/innobase/lock/lock0lock.cc",
+      "上下文代码": "ib::error(ER_IB_MSG_634) << \"Transaction id \" << trx_id",
+      "函数与场景": "lock_deadlock_check_and_resolve函数内，死锁检测完成后输出死锁涉及的事务ID信息"
+    }
+  },
+  {
+    "id": 14,
+    "输入": "日志消息 \"InnoDB: A table lock wait happens in a dictionary operation\"",
+    "期望输出": {
+      "文件位置": "storage/innobase/lock/lock0lock.cc",
+      "上下文代码": "ib::error(ER_IB_MSG_642) << \"A table lock wait happens in a dictionary\" << \" operation\"",
+      "函数与场景": "lock_table函数内，数据字典操作期间发生表锁等待时的错误日志，这通常表示内部错误"
+    }
+  },
+  {
+    "id": 15,
+    "输入": "日志消息 \"InnoDB: Transaction already had an\"",
+    "期望输出": {
+      "文件位置": "storage/innobase/lock/lock0lock.cc",
+      "上下文代码": "ib::error(ER_IB_MSG_637) << \"Transaction already had an\"",
+      "函数与场景": "lock_rec_enqueue_waiting函数内，事务已持有某种锁但仍尝试获取冲突锁时的错误日志"
+    }
+  },
+  {
+    "id": 16,
+    "输入": "日志消息 \"InnoDB: Failed to delete tablespace file\"",
+    "期望输出": {
+      "文件位置": "storage/innobase/srv/srv0tmp.cc",
+      "上下文代码": "ib::error(ER_IB_FAILED_TO_DELETE_TABLESPACE_FILE)",
+      "函数与场景": "ibt::Tablespace::delete_file函数内，删除临时表空间文件失败时的错误日志"
+    }
+  },
+  {
+    "id": 17,
+    "输入": "日志消息 \"GTID already added by another user\"",
+    "期望输出": {
+      "文件位置": "sql/rpl_gtid_persist.cc",
+      "上下文代码": "LogErr(WARNING_LEVEL, ER_GTID_ALREADY_ADDED_BY_USER,",
+      "函数与场景": "Gtid_table_persistor::save函数内，尝试持久化GTID时发现该GTID已被其他用户添加的警告日志"
+    }
+  },
+  {
+    "id": 18,
+    "输入": "日志消息 \"Failed to delete from gtid_executed table\"",
+    "期望输出": {
+      "文件位置": "sql/rpl_gtid_persist.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_FAILED_TO_DELETE_FROM_GTID_EXECUTED_TABLE,",
+      "函数与场景": "Gtid_table_persistor::reset函数内，清理gtid_executed表失败时的错误日志"
+    }
+  },
+  {
+    "id": 19,
+    "输入": "日志消息 \"Failed to compress gtid_executed table\"",
+    "期望输出": {
+      "文件位置": "sql/rpl_gtid_persist.cc",
+      "上下文代码": "LogErr(WARNING_LEVEL, ER_FAILED_TO_COMPRESS_GTID_EXECUTED_TABLE);",
+      "函数与场景": "Gtid_table_persistor::compress函数内，压缩gtid_executed表失败时的警告日志"
+    }
+  },
+  {
+    "id": 20,
+    "输入": "日志消息 \"Out of memory when creating gtid_executed table compression thread\"",
+    "期望输出": {
+      "文件位置": "sql/rpl_gtid_persist.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_FAILED_TO_COMPRESS_GTID_EXECUTED_TABLE_OOM);",
+      "函数与场景": "Gtid_table_persistor::init_thd函数内，创建GTID表压缩线程时内存不足的错误日志"
+    }
+  },
+  {
+    "id": 21,
+    "输入": "日志消息 \"Gtid table is not ready to be used\"",
+    "期望输出": {
+      "文件位置": "sql/rpl_gtid_state.cc",
+      "上下文代码": "LogErr(WARNING_LEVEL, ER_WARN_GTID_THRESHOLD_BREACH);",
+      "函数与场景": "Gtid_state::warn_or_err_on_modify_gtid_table函数内，GTID表未就绪时尝试修改的警告日志"
+    }
+  },
+  {
+    "id": 22,
+    "输入": "日志消息 \"# Query_time: [0-9]+\\.[0-9]+ Lock_time: [0-9]+\\.[0-9]+ Rows_sent: [0-9]+ Rows_examined: [0-9]+\"",
+    "期望输出": {
+      "文件位置": "sql/log.cc",
+      "上下文代码": "my_fprintf(log_file, \"# Query_time: %s Lock_time: %s Rows_sent: %lu Rows_examined: %lu\\n\", query_time_buff, lock_time_buff, (ulong)thd->get_sent_row_count(), (ulong)thd->get_examined_row_count());",
+      "函数与场景": "slow_log_print函数内，记录慢查询日志时输出的查询时间、锁等待时间、返回行数、扫描行数统计信息"
+    }
+  },
+  {
+    "id": 23,
+    "输入": "日志消息 \"Slow query log is enabled\"",
+    "期望输出": {
+      "文件位置": "sql/sys_vars.cc",
+      "上下文代码": "sql_print_information(\"Slow query log is %s\", opt_slow_log ? \"enabled\" : \"disabled\");",
+      "函数与场景": "Sys_var_mybool::update函数内，修改slow_query_log系统变量后输出的慢查询日志状态提示信息"
+    }
+  },
+  {
+    "id": 24,
+    "输入": "日志消息 \"# Time: [0-9]{6} [0-9]{1,2}:[0-9]{2}:[0-9]{2}\"",
+    "期望输出": {
+      "文件位置": "sql/log.cc",
+      "上下文代码": "my_fprintf(log_file, \"# Time: %s\\n\", buff);",
+      "函数与场景": "slow_log_print函数内，慢查询日志记录查询执行时间戳的格式化输出"
+    }
+  },
+  {
+    "id": 25,
+    "输入": "日志消息 \"Slow queries logged to file\"",
+    "期望输出": {
+      "文件位置": "sql/log.cc",
+      "上下文代码": "sql_print_information(\"Slow queries logged to %s\", log_name);",
+      "函数与场景": "Query_logger::slow_log_write函数内，启用文件慢查询日志后输出的日志文件路径信息"
+    }
+  },
+  {
+    "id": 26,
+    "输入": "日志消息 \"Access denied for user .@. (using password: YES)\"",
+    "期望输出": {
+      "文件位置": "sql/auth/sql_authentication.cc",
+      "上下文代码": "my_error(ER_ACCESS_DENIED_ERROR, MYF(0), mpvio->auth_info.user_name, mpvio->auth_info.host_or_ip, \"YES\");",
+      "函数与场景": "check_password函数内，用户提供密码但认证失败时的访问拒绝错误日志"
+    }
+  },
+  {
+    "id": 27,
+    "输入": "日志消息 \"Access denied for user .@. (using password: NO)\"",
+    "期望输出": {
+      "文件位置": "sql/auth/sql_authentication.cc",
+      "上下文代码": "my_error(ER_ACCESS_DENIED_ERROR, MYF(0), sctx->user().str, sctx->host_or_ip().str, \"NO\");",
+      "函数与场景": "acl_authenticate函数内，用户未提供密码且认证失败时的访问拒绝错误日志"
+    }
+  },
+  {
+    "id": 28,
+    "输入": "日志消息 \"Server certificate verification failed\"",
+    "期望输出": {
+      "文件位置": "sql/auth/sql_authentication.cc",
+      "上下文代码": "sql_print_error(\"Server certificate verification failed: %s\", error_msg);",
+      "函数与场景": "do_auth_once函数内，SSL/TLS证书验证失败时的错误日志"
+    }
+  },
+  {
+    "id": 29,
+    "输入": "日志消息 \"Plugin . is not loaded\"",
+    "期望输出": {
+      "文件位置": "sql/auth/sql_auth_cache.cc",
+      "上下文代码": "sql_print_warning(\"Plugin '%s' is not loaded\", plugin_name.str);",
+      "函数与场景": "acl_load函数内，用户账户引用的认证插件未加载时的警告日志"
+    }
+  },
+  {
+    "id": 30,
+    "输入": "日志消息 \"Authentication plugin . reported error\"",
+    "期望输出": {
+      "文件位置": "sql/auth/sql_authentication.cc",
+      "上下文代码": "sql_print_error(\"Authentication plugin '%s' reported error: %s\", plugin_name, error_msg);",
+      "函数与场景": "server_mpvio_write_packet函数内，认证插件执行过程中报告错误时的日志记录"
+    }
+  },
+  {
+    "id": 31,
+    "输入": "日志消息 \"NDB: Node . failed to connect\"",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/kernel/vm/mt.cpp",
+      "上下文代码": "g_eventLogger->info(\"NDB: Node %d failed to connect\", node_id);",
+      "函数与场景": "trp_client::do_connect函数内，NDB数据节点或管理节点连接失败时的信息日志"
+    }
+  },
+  {
+    "id": 32,
+    "输入": "日志消息 \"NDB: Out of memory when allocating\"",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/kernel/vm/Emulator.cpp",
+      "上下文代码": "g_eventLogger->error(\"NDB: Out of memory when allocating %llu bytes\", (ulonglong)size);",
+      "函数与场景": "Emulator::allocate函数内，NDB引擎分配内存失败时的错误日志"
+    }
+  },
+  {
+    "id": 33,
+    "输入": "日志消息 \"NDB: Data node . has started\"",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/kernel/blocks/ndbcntr/NdbcntrMain.cpp",
+      "上下文代码": "g_eventLogger->info(\"NDB: Data node %u has started\", getOwnNodeId());",
+      "函数与场景": "Ndbcntr::execSTTOR函数内，NDB数据节点启动完成时的信息日志"
+    }
+  },
+  {
+    "id": 34,
+    "输入": "测试命令日志 \"cmd: testSystemRestart args: -n SR_DD_1 T1\"",
+    "期望输出": {
+      "文件位置": "storage/ndb/test/run-test/run_ndb_tests.pl",
+      "上下文代码": "print \"cmd: testSystemRestart args: -n $test_name $thread\\n\";",
+      "函数与场景": "NDB集群系统重启测试用例执行时，测试驱动脚本输出的测试命令和参数日志"
+    }
+  },
+  {
+    "id": 35,
+    "输入": "测试命令日志 \"cmd: testNodeRestart args: -n Bug18414 T1\"",
+    "期望输出": {
+      "文件位置": "storage/ndb/test/run-test/run_ndb_tests.pl",
+      "上下文代码": "print \"cmd: testNodeRestart args: -n $test_case $thread\\n\";",
+      "函数与场景": "NDB节点重启测试用例（回归测试Bug18414）执行时，测试脚本输出的命令日志"
+    }
+  },
+  {
+    "id": 36,
+    "输入": "日志消息 \"NDB: Forced node shutdown completed\"",
+    "期望输出": {
+      "文件位置": "storage/ndb/src/kernel/vm/SimBlockList.cpp",
+      "上下文代码": "g_eventLogger->info(\"NDB: Forced node shutdown completed\");",
+      "函数与场景": "SimulatedBlock::EXECUTE_DIRECT函数内，NDB节点强制关闭完成时的信息日志"
+    }
+  },
+  {
+    "id": 37,
+    "输入": "日志消息 \"Could not open binlog file for writing\"",
+    "期望输出": {
+      "文件位置": "sql/binlog.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_BINLOG_CANT_OPEN_FOR_LOGGING, log_name, errno);",
+      "函数与场景": "MYSQL_BIN_LOG::open_binlog函数内，打开二进制日志文件失败（权限不足、磁盘满）时的错误日志"
+    }
+  },
+  {
+    "id": 38,
+    "输入": "日志消息 \"Binlog cache size exceeds max_binlog_cache_size\"",
+    "期望输出": {
+      "文件位置": "sql/binlog.cc",
+      "上下文代码": "LogErr(WARNING_LEVEL, ER_BINLOG_CACHE_SIZE_TOO_LARGE, binlog_cache_size, max_binlog_cache_size);",
+      "函数与场景": "binlog_cache_data::write_event函数内，事务二进制日志缓存大小超过max_binlog_cache_size限制时的警告日志"
+    }
+  },
+  {
+    "id": 39,
+    "输入": "日志消息 \"Binlog event format version . detected\"",
+    "期望输出": {
+      "文件位置": "sql/log_event.cc",
+      "上下文代码": "sql_print_information(\"Binlog event format version %d detected\", format_version);",
+      "函数与场景": "Log_event::read_log_event函数内，解析二进制日志事件时检测到特定格式版本的信息日志"
+    }
+  },
+  {
+    "id": 40,
+    "输入": "日志消息 \"Binlog closed, cannot RESET MASTER\"",
+    "期望输出": {
+      "文件位置": "sql/binlog.cc",
+      "上下文代码": "my_error(ER_FLUSH_MASTER_BINLOG_CLOSED, MYF(0));",
+      "函数与场景": "MYSQL_BIN_LOG::reset_logs函数内，二进制日志已关闭状态下尝试执行RESET MASTER命令时的错误日志"
+    }
+  },
+  {
+    "id": 41,
+    "输入": "日志消息 \"Performance Schema initialized\"",
+    "期望输出": {
+      "文件位置": "storage/perfschema/pfs.cc",
+      "上下文代码": "sql_print_information(\"Performance Schema initialized\");",
+      "函数与场景": "initialize_performance_schema函数内，性能模式初始化成功时的信息日志"
+    }
+  },
+  {
+    "id": 42,
+    "输入": "日志消息 \"Performance Schema disabled due to low memory\"",
+    "期望输出": {
+      "文件位置": "storage/perfschema/pfs.cc",
+      "上下文代码": "sql_print_warning(\"Performance Schema disabled due to low memory\");",
+      "函数与场景": "pfs_start函数内，系统内存不足导致性能模式无法启用时的警告日志"
+    }
+  },
+  {
+    "id": 43,
+    "输入": "日志消息 \"Performance Schema: failed to allocate memory for instrument\"",
+    "期望输出": {
+      "文件位置": "storage/perfschema/pfs_instr.cc",
+      "上下文代码": "sql_print_error(\"Performance Schema: failed to allocate memory for instrument '%s'\", name);",
+      "函数与场景": "create_mutex_class函数内，为性能模式工具（互斥锁、读写锁等）分配内存失败时的错误日志"
+    }
+  },
+  {
+    "id": 44,
+    "输入": "测试命令日志 \"cmd: testPartition args: -n RangePartition T1\"",
+    "期望输出": {
+      "文件位置": "mysql-test/run-test/partition_test.pl",
+      "上下文代码": "print \"cmd: testPartition args: -n $test_name $thread\\n\";",
+      "函数与场景": "分区表范围分区测试用例执行时，测试驱动脚本输出的命令日志"
+    }
+  },
+  {
+    "id": 45,
+    "输入": "测试命令日志 \"cmd: testCharset args: -n Utf8mb4Collation T1\"",
+    "期望输出": {
+      "文件位置": "mysql-test/run-test/charset_test.pl",
+      "上下文代码": "print \"cmd: testCharset args: -n $test_case $thread\\n\";",
+      "函数与场景": "字符集UTF-8MB4校对规则测试用例执行时，测试脚本输出的命令日志"
+    }
+  },
+  {
+    "id": 46,
+    "输入": "测试命令日志 \"cmd: testTempTable args: -n CreateDrop T1\"",
+    "期望输出": {
+      "文件位置": "mysql-test/run-test/temp_table_test.pl",
+      "上下文代码": "print \"cmd: testTempTable args: -n $test_name $thread\\n\";",
+      "函数与场景": "临时表创建删除测试用例执行时，测试脚本输出的命令日志"
+    }
+  },
+  {
+    "id": 47,
+    "输入": "测试命令日志 \"cmd: testDDL args: -n AlterTableLock T1\"",
+    "期望输出": {
+      "文件位置": "mysql-test/run-test/ddl_test.pl",
+      "上下文代码": "print \"cmd: testDDL args: -n $test_case $thread\\n\";",
+      "函数与场景": "DDL操作表锁测试用例执行时，测试驱动脚本输出的命令日志"
+    }
+  },
+  {
+    "id": 48,
+    "输入": "日志消息 \"[ERROR] [MY-[0-9]+] [Server] Can't create/write to file .\"",
+    "期望输出": {
+      "文件位置": "sql/log.cc",
+      "上下文代码": "LogErr(ERROR_LEVEL, ER_CANT_CREATE_FILE, file_name, errno, strerror(errno));",
+      "函数与场景": "log_open函数内，结构化错误日志输出（MY-错误码格式），创建或写入日志文件失败时的错误日志"
+    }
+  },
+  {
+    "id": 49,
+    "输入": "日志消息 \"[Warning] [MY-[0-9]+] [Repl] Slave SQL thread for channel . has stopped\"",
+    "期望输出": {
+      "文件位置": "sql/rpl_replica.cc",
+      "上下文代码": "LogErr(WARNING_LEVEL, ER_SLAVE_SQL_THREAD_STOP, rli->get_channel());",
+      "函数与场景": "handle_slave_sql函数内，复制SQL线程停止时的结构化警告日志（包含通道名）"
+    }
+  },
+  {
+    "id": 50,
+    "输入": "日志消息 \"[Note] [MY-[0-9]+] [Server] Event Scheduler: Loaded . events\"",
+    "期望输出": {
+      "文件位置": "sql/events.cc",
+      "上下文代码": "LogErr(INFORMATION_LEVEL, ER_EVENT_SCHEDULER_LOADED, event_count);",
+      "函数与场景": "Events::load_events_from_db函数内，事件调度器启动加载事件定义完成时的结构化信息日志"
+    }
+  }
+]
