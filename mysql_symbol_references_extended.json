@@ -1,0 +1,562 @@
+[
+  {
+    "id": "REF-011",
+    "符号/函数": "lock_rec_lock",
+    "定义位置": "storage/innobase/lock/lock0lock.cc",
+    "关键调用/使用位置": [
+      "storage/innobase/row/row0sel.cc: row_search_mvcc() 函数内调用，实现行级锁定（MVCC读取时加锁）",
+      "storage/innobase/lock/lock0lock.cc: lock_rec_convert_impl_to_expl() 隐式锁转换为显式锁时调用",
+      "storage/innobase/row/row0ins.cc: row_ins_clust_index_entry() 插入聚簇索引时调用行锁",
+      "storage/innobase/handler/ha_innobase.cc: ha_innobase::write_row() 通过row层间接调用行锁机制"
+    ],
+    "模块归属": "InnoDB存储引擎-锁管理模块",
+    "调用场景": "行记录加锁、死锁检测触发、事务隔离级别实现（RR/RC）、INSERT/UPDATE/DELETE操作行锁定",
+    "验证备注": "与lock_table_lock的区别：前者是行级锁（记录锁），后者是表级锁；8.0.x全版本核心逻辑保持稳定，仅死锁检测性能优化；源码位置storage/innobase/lock/lock0lock.cc"
+  },
+  {
+    "id": "REF-012",
+    "符号/枚举": "lock_mode",
+    "定义位置": "storage/innobase/include/lock0types.h",
+    "关键调用/使用位置": [
+      "storage/innobase/lock/lock0lock.cc: lock_rec_lock() 函数参数，指定加锁模式（S/X/IS/IX/GAP等）",
+      "storage/innobase/include/lock0lock.h: lock_get_mode() 获取锁对象的锁模式",
+      "storage/innobase/handler/ha_innobase.cc: external_lock() 根据SQL操作类型选择锁模式",
+      "storage/innobase/lock/lock0wait.cc: lock_wait_suspend_thread() 等待锁时检查锁模式兼容性"
+    ],
+    "模块归属": "InnoDB存储引擎-锁类型定义模块",
+    "调用场景": "指定行锁/表锁的加锁类型、锁兼容性判断、死锁检测中锁模式匹配、间隙锁（GAP）与记录锁区分",
+    "验证备注": "lock_mode枚举值包括LOCK_S（共享锁）、LOCK_X（排他锁）、LOCK_IS、LOCK_IX、LOCK_GAP等；定义于storage/innobase/include/lock0types.h#L54-L68；8.0.x无枚举值变更"
+  },
+  {
+    "id": "REF-013",
+    "符号/结构体": "lock_t",
+    "定义位置": "storage/innobase/include/lock0priv.h",
+    "关键调用/使用位置": [
+      "storage/innobase/lock/lock0lock.cc: lock_rec_create() 创建行锁对象，分配lock_t结构体",
+      "storage/innobase/lock/lock0wait.cc: lock_wait_table_reserve_slot() 锁等待队列管理使用lock_t",
+      "storage/innobase/trx/trx0trx.cc: trx_t::lock 成员变量，事务持有的锁列表元素类型为lock_t",
+      "storage/innobase/lock/lock0iter.cc: lock_queue_iterator 遍历锁队列时操作lock_t指针"
+    ],
+    "模块归属": "InnoDB存储引擎-锁对象数据结构模块",
+    "调用场景": "锁对象创建与销毁、锁队列管理、事务锁列表维护、死锁检测遍历锁图",
+    "验证备注": "lock_t包含锁类型、锁模式、关联事务、锁定对象（表/记录）等信息；区分lock_table_t（表锁）和lock_rec_t（行锁）；定义于storage/innobase/include/lock0priv.h；8.0.x结构体成员无重大变更"
+  },
+  {
+    "id": "REF-014",
+    "符号/类": "Buf_pool",
+    "定义位置": "storage/innobase/include/buf0buf.h（类声明），storage/innobase/buf/buf0buf.cc（方法实现）",
+    "关键调用/使用位置": [
+      "storage/innobase/buf/buf0buf.cc: buf_pool_init() 初始化缓冲池，创建Buf_pool实例",
+      "storage/innobase/buf/buf0lru.cc: buf_LRU_get_free_block() 从缓冲池获取空闲页，调用Buf_pool方法",
+      "storage/innobase/buf/buf0flu.cc: buf_flush_batch() 刷脏页时操作Buf_pool的flush_list",
+      "storage/innobase/handler/ha_innobase.cc: innobase_init() Server启动时初始化InnoDB缓冲池"
+    ],
+    "模块归属": "InnoDB存储引擎-缓冲池管理模块",
+    "调用场景": "页面缓存管理、LRU链表维护、脏页刷盘调度、Buffer Pool预热与监控",
+    "验证备注": "Buf_pool为单例模式（8.0.x支持多缓冲池实例）；核心成员包括LRU_list、flush_list、free_list；与buf_page_t（页面描述符）协同工作；定义于storage/innobase/include/buf0buf.h；8.0.x缓冲池架构稳定"
+  },
+  {
+    "id": "REF-015",
+    "符号/函数": "buf_page_get",
+    "定义位置": "storage/innobase/buf/buf0buf.cc",
+    "关键调用/使用位置": [
+      "storage/innobase/btr/btr0cur.cc: btr_cur_search_to_nth_level() B+树游标定位时调用buf_page_get读取页面",
+      "storage/innobase/row/row0sel.cc: row_search_mvcc() 扫描记录时通过buf_page_get获取数据页",
+      "storage/innobase/ibuf/ibuf0ibuf.cc: ibuf_merge_or_delete_for_page() Change Buffer合并时读取页面",
+      "storage/innobase/lock/lock0lock.cc: lock_rec_fetch_page() 加锁时获取目标页面"
+    ],
+    "模块归属": "InnoDB存储引擎-缓冲池页面获取模块",
+    "调用场景": "B+树索引遍历读页、事务读取数据页、Undo日志页读取、系统表空间页面访问",
+    "验证备注": "buf_page_get是缓冲池读页的核心接口，支持读模式（RW_S_LATCH/RW_X_LATCH）；若页面不在缓冲池则触发磁盘IO；与buf_page_get_gen（更底层）的区别：前者是高层封装；定义于storage/innobase/buf/buf0buf.cc；8.0.x无接口变更"
+  },
+  {
+    "id": "REF-016",
+    "符号/宏": "BUF_POOL_SIZE",
+    "定义位置": "storage/innobase/include/buf0buf.h",
+    "关键调用/使用位置": [
+      "storage/innobase/buf/buf0buf.cc: buf_pool_init() 初始化缓冲池时使用BUF_POOL_SIZE计算实例数量",
+      "storage/innobase/srv/srv0start.cc: innobase_init_buffer_pool_size() 根据配置参数设置BUF_POOL_SIZE",
+      "storage/innobase/handler/ha_innobase.cc: innodb_buffer_pool_size 系统变量关联BUF_POOL_SIZE",
+      "mysys/my_malloc.cc: 对比SQL层使用my_malloc，InnoDB缓冲池管理独立于mysys"
+    ],
+    "模块归属": "InnoDB存储引擎-缓冲池配置模块",
+    "调用场景": "缓冲池大小配置、内存预分配、Buffer Pool Chunk划分、动态调整缓冲池大小",
+    "验证备注": "BUF_POOL_SIZE与innodb_buffer_pool_size系统变量绑定；8.0.x支持在线调整（无需重启）；与innodb_buffer_pool_instances配合实现多实例；默认值128MB；定义于storage/innobase/include/buf0buf.h"
+  },
+  {
+    "id": "REF-017",
+    "符号/函数": "fil_space_open",
+    "定义位置": "storage/innobase/fil/fil0fil.cc",
+    "关键调用/使用位置": [
+      "storage/innobase/fil/fil0fil.cc: fil_ibd_open() 打开独立表空间时调用fil_space_open",
+      "storage/innobase/dict/dict0load.cc: dict_load_tablespace() 数据字典加载表空间元数据时打开文件",
+      "storage/innobase/srv/srv0start.cc: srv_start() Server启动时打开系统表空间调用fil_space_open",
+      "storage/innobase/handler/ha_innobase.cc: ha_innobase::open() 打开表时触发表空间文件打开"
+    ],
+    "模块归属": "InnoDB存储引擎-表空间文件管理模块",
+    "调用场景": "表空间文件打开、DDL创建表时分配表空间、崩溃恢复时扫描表空间、tablespace加密文件打开",
+    "验证备注": "fil_space_open处理.ibd文件打开，支持远程表空间（5.7+）和加密表空间（8.0+）；与fil_space_create的区别：前者打开已存在文件，后者创建新表空间；定义于storage/innobase/fil/fil0fil.cc；8.0.x支持原子DDL后文件管理逻辑增强"
+  },
+  {
+    "id": "REF-018",
+    "符号/结构体": "fil_space_t",
+    "定义位置": "storage/innobase/include/fil0fil.h",
+    "关键调用/使用位置": [
+      "storage/innobase/fil/fil0fil.cc: fil_space_create() 创建表空间时分配fil_space_t结构体",
+      "storage/innobase/fsp/fsp0fsp.cc: fsp_header_init() 初始化表空间头部时访问fil_space_t",
+      "storage/innobase/buf/buf0buf.cc: buf_page_io_complete() 页面IO完成时通过fil_space_t定位文件",
+      "storage/innobase/dict/dict0dict.cc: dict_table_t::space 成员变量指向表对应的fil_space_t"
+    ],
+    "模块归属": "InnoDB存储引擎-表空间元数据模块",
+    "调用场景": "表空间元数据管理、文件句柄缓存、页面IO路由、表空间加密密钥存储",
+    "验证备注": "fil_space_t包含space_id、文件路径列表、加密标志、压缩配置等；系统表空间（space_id=0）与用户表空间（space_id>0）均使用该结构体；定义于storage/innobase/include/fil0fil.h；8.0.x增加原子DDL相关字段"
+  },
+  {
+    "id": "REF-019",
+    "符号/函数": "log_write_up_to",
+    "定义位置": "storage/innobase/log/log0write.cc",
+    "关键调用/使用位置": [
+      "storage/innobase/trx/trx0trx.cc: trx_commit() 事务提交时调用log_write_up_to确保redo日志持久化",
+      "storage/innobase/buf/buf0flu.cc: buf_flush_sync_for_checkpoint() 检查点刷脏页前调用确保日志刷盘",
+      "storage/innobase/handler/ha_innobase.cc: innobase_flush_logs() binlog协调时强制刷redo日志",
+      "storage/innobase/log/log0chkp.cc: log_checkpoint() 写检查点前确保日志写入磁盘"
+    ],
+    "模块归属": "InnoDB存储引擎-Redo日志写入模块",
+    "调用场景": "事务提交持久化、组提交（group commit）刷日志、检查点日志同步、崩溃恢复前日志完整性保证",
+    "验证备注": "log_write_up_to实现WAL（Write-Ahead Logging）协议核心；与log_buffer_flush的区别：前者保证指定LSN之前日志落盘，后者批量刷日志缓冲；定义于storage/innobase/log/log0write.cc；8.0.30+重构日志架构但接口保持稳定"
+  },
+  {
+    "id": "REF-020",
+    "符号/类": "Log_sys",
+    "定义位置": "storage/innobase/include/log0log.h（类声明），storage/innobase/log/log0log.cc（方法实现）",
+    "关键调用/使用位置": [
+      "storage/innobase/log/log0log.cc: log_sys全局实例，Server生命周期内唯一Redo日志系统对象",
+      "storage/innobase/mtr/mtr0mtr.cc: mtr_t::commit() Mini-transaction提交时写入log_sys",
+      "storage/innobase/log/log0recv.cc: recv_recovery_from_checkpoint_start() 崩溃恢复时读取log_sys",
+      "storage/innobase/srv/srv0start.cc: srv_start() Server启动时初始化log_sys"
+    ],
+    "模块归属": "InnoDB存储引擎-Redo日志系统核心类",
+    "调用场景": "Redo日志写入管理、LSN（Log Sequence Number）分配、日志缓冲管理、崩溃恢复日志扫描",
+    "验证备注": "Log_sys为单例模式，全局变量log_sys在storage/innobase/log/log0log.cc定义；核心成员包括log_buffer、recent_written、checkpoint_lsn等；8.0.30+重构为无锁日志架构；定义于storage/innobase/include/log0log.h"
+  },
+  {
+    "id": "REF-021",
+    "符号/函数": "JOIN::optimize",
+    "定义位置": "sql/sql_optimizer.cc",
+    "关键调用/使用位置": [
+      "sql/sql_select.cc: handle_query() 执行SELECT语句时调用JOIN::optimize生成查询计划",
+      "sql/sql_union.cc: Query_result_union::optimize() UNION查询优化时调用",
+      "sql/sql_optimizer.cc: JOIN::prepare() 查询准备阶段后调用optimize进行代价优化",
+      "sql/sql_derived.cc: create_derived() 派生表物化前调用JOIN::optimize"
+    ],
+    "模块归属": "SQL层-查询优化器模块",
+    "调用场景": "查询计划生成、连接顺序优化、索引选择、子查询优化、EXPLAIN语句执行",
+    "验证备注": "JOIN::optimize是查询优化核心入口，调用make_join_plan等子函数；8.0.x引入Hypergraph优化器作为补充；与JOIN::exec的区别：前者生成计划，后者执行计划；定义于sql/sql_optimizer.cc"
+  },
+  {
+    "id": "REF-022",
+    "符号/类": "Opt_trace",
+    "定义位置": "sql/opt_trace.h（类声明），sql/opt_trace.cc（方法实现）",
+    "关键调用/使用位置": [
+      "sql/sql_optimizer.cc: JOIN::optimize() 内部调用Opt_trace记录优化过程",
+      "sql/opt_trace.cc: Opt_trace_context优化器追踪上下文管理",
+      "sql/sql_class.cc: THD::opt_trace 成员变量，线程级优化器追踪对象",
+      "sql/sys_vars.cc: optimizer_trace系统变量启用时激活Opt_trace"
+    ],
+    "模块归属": "SQL层-优化器诊断追踪模块",
+    "调用场景": "optimizer_trace功能实现、查询优化过程可视化、性能诊断、教学演示优化器决策",
+    "验证备注": "Opt_trace输出JSON格式优化过程；通过optimizer_trace='enabled=on'启用；与EXPLAIN的区别：前者详细过程，后者最终结果；定义于sql/opt_trace.h；8.0.x持续增强追踪细节"
+  },
+  {
+    "id": "REF-023",
+    "符号/枚举": "JT_CONST",
+    "定义位置": "sql/sql_optimizer.h",
+    "关键调用/使用位置": [
+      "sql/sql_optimizer.cc: make_join_plan() 检测常量表时设置join_type为JT_CONST",
+      "sql/sql_select.cc: create_access_paths() 根据JT_CONST生成常量表访问路径",
+      "sql/sql_executor.cc: sub_select() 执行连接时处理JT_CONST类型表",
+      "sql/opt_explain.cc: Explain_join::explain_table_name() EXPLAIN输出时识别const表"
+    ],
+    "模块归属": "SQL层-连接类型枚举模块",
+    "调用场景": "常量表识别（主键/唯一索引等值查询）、连接顺序优化、EXPLAIN输出type列显示const",
+    "验证备注": "JT_CONST表示表最多返回1行；join_type枚举包括JT_CONST、JT_EQ_REF、JT_REF、JT_ALL等；与JT_EQ_REF区别：前者常量表，后者唯一索引连接；定义于sql/sql_optimizer.h；8.0.x枚举值稳定"
+  },
+  {
+    "id": "REF-024",
+    "符号/函数": "sub_select",
+    "定义位置": "sql/sql_executor.cc",
+    "关键调用/使用位置": [
+      "sql/sql_executor.cc: ExecuteIteratorQuery() 迭代器执行器调用sub_select执行嵌套循环连接",
+      "sql/sql_select.cc: JOIN::exec() 执行连接时调用sub_select处理表连接",
+      "sql/sql_executor.cc: end_send() 结果发送前sub_select完成记录过滤",
+      "sql/sql_union.cc: Query_result_union::send_data() UNION执行时间接调用sub_select"
+    ],
+    "模块归属": "SQL层-查询执行器模块",
+    "调用场景": "嵌套循环连接执行、表扫描与索引查找、WHERE条件过滤、连接缓冲（join buffer）应用",
+    "验证备注": "sub_select实现经典嵌套循环算法；8.0.x引入迭代器执行器（Iterator Executor）部分替代；与sub_select_cache区别：后者使用连接缓冲优化；定义于sql/sql_executor.cc"
+  },
+  {
+    "id": "REF-025",
+    "符号/结构体": "st_join_table",
+    "定义位置": "sql/sql_optimizer.h",
+    "关键调用/使用位置": [
+      "sql/sql_optimizer.cc: JOIN::make_join_plan() 为每个表创建st_join_table结构体",
+      "sql/sql_select.cc: setup_tables() 设置连接表时初始化st_join_table",
+      "sql/sql_executor.cc: sub_select() 访问st_join_table获取表扫描信息",
+      "sql/opt_explain.cc: Explain_join 使用st_join_table生成EXPLAIN输出"
+    ],
+    "模块归属": "SQL层-连接表信息结构体模块",
+    "调用场景": "存储连接表元数据、访问路径（索引/全表扫描）、过滤条件、连接顺序",
+    "验证备注": "st_join_table包含table指针、访问类型、使用的索引、行数估算等；8.0.x扩展支持哈希连接信息；与TABLE结构体的区别：前者查询执行期，后者表定义期；定义于sql/sql_optimizer.h"
+  },
+  {
+    "id": "REF-026",
+    "符号/函数": "Item::val_int",
+    "定义位置": "sql/item.h（虚函数声明），sql/item.cc（基类实现）",
+    "关键调用/使用位置": [
+      "sql/sql_executor.cc: evaluate_join_record() WHERE条件求值时调用Item::val_int",
+      "sql/item_func.cc: Item_func_eq::val_int() 等值比较函数重写val_int",
+      "sql/sql_select.cc: test_if_skip_sort_order() 排序优化时调用表达式val_int",
+      "sql/item_sum.cc: Item_sum_count::val_int() COUNT聚合函数实现val_int"
+    ],
+    "模块归属": "SQL层-表达式求值模块",
+    "调用场景": "WHERE条件判断、ORDER BY排序键计算、聚合函数求值、CASE表达式求值",
+    "验证备注": "Item是SQL表达式基类，val_int返回整数值；类似方法：val_real（浮点）、val_str（字符串）、val_decimal（定点数）；8.0.x Item体系保持稳定；定义于sql/item.h"
+  },
+  {
+    "id": "REF-027",
+    "符号/事件类型": "XID_EVENT",
+    "定义位置": "libbinlogevents/include/binlog_event.h",
+    "关键调用/使用位置": [
+      "sql/log_event.cc: Xid_log_event类处理XID_EVENT事件写入与解析",
+      "sql/binlog.cc: MYSQL_BIN_LOG::commit() 事务提交时写入XID_EVENT到binlog",
+      "sql/rpl_replica.cc: Xid_apply_log_event::do_apply_event() 备库应用XID_EVENT提交事务",
+      "client/mysqlbinlog.cc: Log_event::read_log_event() 解析binlog时识别XID_EVENT"
+    ],
+    "模块归属": "日志系统-二进制日志事务提交事件模块",
+    "调用场景": "分布式事务提交标识、主从复制事务边界识别、binlog事务完整性保证、崩溃恢复事务状态判定",
+    "验证备注": "XID_EVENT标记事务提交，包含XID（事务ID）；枚举值26（libbinlogevents/include/binlog_event.h）；与QUERY_EVENT区别：后者记录SQL语句，前者仅标记提交；8.0.x事件格式稳定"
+  },
+  {
+    "id": "REF-028",
+    "符号/类": "Xid_log_event",
+    "定义位置": "sql/log_event.h（类声明），sql/log_event.cc（方法实现）",
+    "关键调用/使用位置": [
+      "sql/binlog.cc: MYSQL_BIN_LOG::write_transaction_to_binlog() 创建Xid_log_event写入binlog",
+      "sql/rpl_replica.cc: Log_event::read_log_event() 从binlog读取并反序列化Xid_log_event",
+      "sql/log_event.cc: Xid_log_event::do_apply_event() 备库执行XID事件提交引擎事务",
+      "sql/binlog.cc: MYSQL_BIN_LOG::ordered_commit() 组提交阶段处理Xid_log_event"
+    ],
+    "模块归属": "日志系统-XID事件处理类模块",
+    "调用场景": "二进制日志XID事件序列化/反序列化、主库事务提交写binlog、备库事务回放、GTID与XID关联",
+    "验证备注": "Xid_log_event继承自Log_event；核心成员xid（事务ID）；与Query_log_event区别：后者包含SQL文本，前者仅事务元数据；定义于sql/log_event.h；8.0.x类结构稳定"
+  },
+  {
+    "id": "REF-029",
+    "符号/函数": "MYSQL_BIN_LOG::write_transaction_to_binlog",
+    "定义位置": "sql/binlog.cc",
+    "关键调用/使用位置": [
+      "sql/binlog.cc: MYSQL_BIN_LOG::commit() 调用write_transaction_to_binlog写入事务缓存到binlog",
+      "sql/handler.cc: ha_commit_trans() Server层事务提交时触发binlog写入",
+      "sql/sql_class.cc: THD::binlog_flush_pending_rows_event() 行格式binlog写入事务",
+      "sql/rpl_group_replication.cc: 组复制事务提交时调用write_transaction_to_binlog"
+    ],
+    "模块归属": "日志系统-二进制日志事务写入模块",
+    "调用场景": "事务提交写binlog、组提交（group commit）批量写入、GTID事务标记、两阶段提交协调",
+    "验证备注": "write_transaction_to_binlog实现事务缓存到binlog文件的原子写入；与MYSQL_BIN_LOG::write的区别：前者事务级，后者事件级；定义于sql/binlog.cc；8.0.x支持并行复制后逻辑增强"
+  },
+  {
+    "id": "REF-030",
+    "符号/类": "Relay_log_info",
+    "定义位置": "sql/rpl_replica.h（类声明），sql/rpl_replica.cc（方法实现）",
+    "关键调用/使用位置": [
+      "sql/rpl_replica.cc: init_relay_log_info() 备库启动时初始化Relay_log_info",
+      "sql/rpl_replica.cc: Replica_sql_thread::init_relay_log_pos() SQL线程读取relay log位置",
+      "sql/rpl_handler.cc: Rpl_info_factory::create_rli() 多源复制创建多个Relay_log_info实例",
+      "sql/rpl_info_file.cc: Relay_log_info::flush_info() 持久化relay log信息到relay-log.info文件"
+    ],
+    "模块归属": "日志系统-Relay日志信息管理模块",
+    "调用场景": "备库SQL线程状态管理、relay log位置追踪、多源复制通道管理、崩溃恢复relay log定位",
+    "验证备注": "Relay_log_info存储备库SQL线程执行位置、GTID状态、通道信息；与Master_info区别：前者SQL线程，后者IO线程；定义于sql/rpl_replica.h；8.0.x支持多源复制后类扩展"
+  },
+  {
+    "id": "REF-031",
+    "符号/宏": "BINLOG_EVENT_MAX_SIZE",
+    "定义位置": "libbinlogevents/include/binlog_event.h",
+    "关键调用/使用位置": [
+      "sql/log_event.cc: Query_log_event::write() 检查事件大小不超过BINLOG_EVENT_MAX_SIZE",
+      "sql/binlog.cc: MYSQL_BIN_LOG::write_event() 写事件前验证大小限制",
+      "sql/rpl_replica.cc: Relay_log_info::read_event() 读取binlog事件时校验大小",
+      "libbinlogevents/src/binlog_event.cpp: Log_event_header 事件头部大小计算参考该宏"
+    ],
+    "模块归属": "日志系统-二进制日志事件大小限制模块",
+    "调用场景": "binlog事件大小校验、防止单个事件过大、网络传输分包、内存分配安全检查",
+    "验证备注": "BINLOG_EVENT_MAX_SIZE默认值1GB（1073741824字节）；与max_binlog_size区别：前者单事件，后者单文件；定义于libbinlogevents/include/binlog_event.h；8.0.x宏值稳定"
+  },
+  {
+    "id": "REF-032",
+    "符号/函数": "ut_malloc",
+    "定义位置": "storage/innobase/ut/ut0ut.cc",
+    "关键调用/使用位置": [
+      "storage/innobase/mem/mem0mem.cc: mem_heap_create() InnoDB内存堆分配调用ut_malloc",
+      "storage/innobase/btr/btr0cur.cc: btr_cur_parse_update_in_place() 解析更新时临时内存分配",
+      "storage/innobase/row/row0sel.cc: row_search_mvcc() 查询临时缓冲区分配使用ut_malloc",
+      "对比：SQL层使用my_malloc（mysys/my_malloc.cc），InnoDB独立内存管理使用ut_malloc"
+    ],
+    "模块归属": "InnoDB存储引擎-基础内存分配模块",
+    "调用场景": "InnoDB内部数据结构内存分配、临时缓冲区分配、内存池管理、PFS内存统计",
+    "验证备注": "ut_malloc是InnoDB专用内存分配器，支持PSI（Performance Schema）统计；与my_malloc区别：ut_malloc用于InnoDB，my_malloc用于Server层；定义于storage/innobase/ut/ut0ut.cc；8.0.x无接口变更"
+  },
+  {
+    "id": "REF-033",
+    "符号/函数": "my_error",
+    "定义位置": "mysys/my_error.cc",
+    "关键调用/使用位置": [
+      "sql/sql_parse.cc: dispatch_command() 解析错误时调用my_error输出错误信息",
+      "storage/innobase/handler/ha_innobase.cc: ha_innobase::write_row() 存储引擎错误时调用my_error",
+      "sql/sql_table.cc: mysql_create_table() DDL失败时调用my_error设置错误消息",
+      "sql/auth/sql_authorization.cc: check_access() 权限校验失败调用my_error"
+    ],
+    "模块归属": "基础组件-错误处理模块",
+    "调用场景": "SQL错误信息输出、存储引擎错误上报、客户端错误返回、错误日志记录",
+    "验证备注": "my_error根据错误码从errmsg.sys加载错误消息模板；与my_printf_error区别：前者使用错误码，后者直接格式化；定义于mysys/my_error.cc；8.0.x错误码系统稳定"
+  },
+  {
+    "id": "REF-034",
+    "符号/函数": "my_strcasecmp",
+    "定义位置": "strings/ctype-simple.c",
+    "关键调用/使用位置": [
+      "sql/sql_parse.cc: check_command() 命令名称比较（不区分大小写）调用my_strcasecmp",
+      "sql/sql_table.cc: compare_table_name() 表名比较时使用my_strcasecmp",
+      "sql/auth/sql_authorization.cc: acl_check() 用户名/主机名匹配调用my_strcasecmp",
+      "storage/myisam/mi_open.cc: MyISAM引擎表名比较使用my_strcasecmp"
+    ],
+    "模块归属": "基础组件-字符串处理模块",
+    "调用场景": "不区分大小写字符串比较、标识符匹配、SQL关键字识别、字符集无关比较",
+    "验证备注": "my_strcasecmp考虑字符集影响，支持多字节字符；与strcasecmp区别：前者MySQL扩展支持字符集，后者标准C库函数；定义于strings/ctype-simple.c；8.0.x保持稳定"
+  },
+  {
+    "id": "REF-035",
+    "符号/宏": "MY_MIN",
+    "定义位置": "include/my_sys.h",
+    "关键调用/使用位置": [
+      "mysys/my_malloc.cc: 内存分配大小计算时使用MY_MIN限制最大值",
+      "sql/sql_optimizer.cc: JOIN::estimate_rowcount() 行数估算时使用MY_MIN",
+      "storage/innobase/buf/buf0lru.cc: buf_LRU_get_free_block() 空闲页计算使用MY_MIN",
+      "sql/net_serv.cc: my_net_write() 网络写入分包时使用MY_MIN计算块大小"
+    ],
+    "模块归属": "基础组件-通用宏定义模块",
+    "调用场景": "取两数最小值、边界值限制、内存/缓冲区大小计算、循环迭代次数控制",
+    "验证备注": "MY_MIN(a,b)宏定义为((a)<(b)?(a):(b))；与std::min区别：MY_MIN是宏无类型检查，std::min是C++模板；定义于include/my_sys.h；8.0.x宏定义不变"
+  },
+  {
+    "id": "REF-036",
+    "符号/类": "Ndb",
+    "定义位置": "storage/ndb/include/ndbapi/Ndb.hpp（类声明），storage/ndb/src/ndbapi/Ndb.cpp（方法实现）",
+    "关键调用/使用位置": [
+      "storage/ndb/plugin/ha_ndbcluster.cc: ha_ndbcluster::open() 打开NDB表时创建Ndb对象",
+      "storage/ndb/src/ndbapi/Ndb.cpp: Ndb::init() 初始化与NDB集群的连接",
+      "storage/ndb/plugin/ha_ndbcluster_binlog.cc: NDB binlog线程使用Ndb对象接收集群事件",
+      "storage/ndb/src/ndbapi/NdbTransaction.cpp: Ndb::startTransaction() 创建NDB事务对象"
+    ],
+    "模块归属": "NDB Cluster-NDBAPI核心接口类",
+    "调用场景": "NDB集群连接管理、事务启动、表操作接口、事件订阅、集群状态查询",
+    "验证备注": "Ndb类是NDBAPI入口，每个线程需独立Ndb实例；与Ndb_cluster_connection区别：后者管理集群连接池，前者单连接操作；定义于storage/ndb/include/ndbapi/Ndb.hpp；8.0.x NDB版本保持兼容"
+  },
+  {
+    "id": "REF-037",
+    "符号/类": "NdbTransaction",
+    "定义位置": "storage/ndb/include/ndbapi/NdbTransaction.hpp（类声明），storage/ndb/src/ndbapi/NdbTransaction.cpp（方法实现）",
+    "关键调用/使用位置": [
+      "storage/ndb/plugin/ha_ndbcluster.cc: ha_ndbcluster::write_row() 调用NdbTransaction执行插入操作",
+      "storage/ndb/src/ndbapi/Ndb.cpp: Ndb::startTransaction() 创建NdbTransaction实例",
+      "storage/ndb/plugin/ha_ndbcluster.cc: ha_ndbcluster::commit() 调用NdbTransaction::execute()提交事务",
+      "storage/ndb/src/ndbapi/NdbOperation.cpp: NdbTransaction::getNdbOperation() 获取操作对象"
+    ],
+    "模块归属": "NDB Cluster-事务管理模块",
+    "调用场景": "NDB分布式事务执行、DML操作提交、两阶段提交、事务回滚",
+    "验证备注": "NdbTransaction表示NDB集群上的分布式事务；核心方法execute()执行事务；与InnoDB trx_t区别：前者分布式事务，后者单节点事务；定义于storage/ndb/include/ndbapi/NdbTransaction.hpp"
+  },
+  {
+    "id": "REF-038",
+    "符号/函数": "Ndb_init",
+    "定义位置": "storage/ndb/src/ndbapi/Ndb_init.cpp",
+    "关键调用/使用位置": [
+      "storage/ndb/plugin/ha_ndbcluster.cc: ndbcluster_init() NDB存储引擎初始化时调用Ndb_init",
+      "storage/ndb/tools/ndb_mgm.cpp: NDB管理工具启动时调用Ndb_init初始化库",
+      "storage/ndb/src/ndbapi/Ndb.cpp: Ndb对象使用前必须确保Ndb_init已调用",
+      "storage/ndb/plugin/ndb_global_schema_lock.cc: 全局schema锁初始化前调用Ndb_init"
+    ],
+    "模块归属": "NDB Cluster-NDBAPI初始化模块",
+    "调用场景": "NDB客户端库初始化、全局资源分配、信号处理器设置、NDB工具程序启动",
+    "验证备注": "Ndb_init必须在使用任何NDBAPI功能前调用；对应Ndb_end清理资源；定义于storage/ndb/src/ndbapi/Ndb_init.cpp；多次调用安全（引用计数）；8.0.x接口稳定"
+  },
+  {
+    "id": "REF-039",
+    "符号/枚举": "NdbError::Classification",
+    "定义位置": "storage/ndb/include/ndbapi/NdbError.hpp",
+    "关键调用/使用位置": [
+      "storage/ndb/plugin/ha_ndbcluster.cc: ndb_to_mysql_error() 将NDB错误映射为MySQL错误码时检查Classification",
+      "storage/ndb/src/ndbapi/NdbTransaction.cpp: NdbTransaction::execute() 执行失败时获取错误分类",
+      "storage/ndb/plugin/ha_ndbcluster_push.cc: 下推查询错误处理根据Classification判断重试",
+      "storage/ndb/tools/ndb_show_tables.cpp: NDB工具错误输出时显示Classification"
+    ],
+    "模块归属": "NDB Cluster-错误分类枚举模块",
+    "调用场景": "NDB错误类型识别、错误处理策略选择（重试/失败）、错误日志分类、临时错误与永久错误区分",
+    "验证备注": "NdbError::Classification枚举包括NoDataFound、ConstraintViolation、TemporaryError、PermanentError等；定义于storage/ndb/include/ndbapi/NdbError.hpp；8.0.x枚举值稳定"
+  },
+  {
+    "id": "REF-040",
+    "符号/函数": "pfs_start_statement_v1",
+    "定义位置": "storage/perfschema/pfs.cc",
+    "关键调用/使用位置": [
+      "sql/sql_parse.cc: dispatch_command() 命令执行前调用pfs_start_statement_v1记录语句开始",
+      "storage/perfschema/pfs_statement_provider.cc: PSI_statement_service实现中调用pfs_start_statement_v1",
+      "sql/sql_class.cc: THD::start_statement() 绑定PFS语句统计",
+      "sql/sp_head.cc: sp_instr_stmt::exec_core() 存储过程语句执行时调用PFS接口"
+    ],
+    "模块归属": "Performance Schema-语句级统计模块",
+    "调用场景": "SQL语句性能统计开始、statement事件记录、performance_schema.events_statements_*表数据采集",
+    "验证备注": "pfs_start_statement_v1是PSI（Performance Schema Instrumentation）接口；与pfs_end_statement_v1配对使用；定义于storage/perfschema/pfs.cc；8.0.x PFS接口版本化管理"
+  },
+  {
+    "id": "REF-041",
+    "符号/类": "PFS_thread",
+    "定义位置": "storage/perfschema/pfs_instr.h（类声明），storage/perfschema/pfs_instr.cc（方法实现）",
+    "关键调用/使用位置": [
+      "storage/perfschema/pfs.cc: pfs_spawn_thread_v1() 线程创建时分配PFS_thread对象",
+      "storage/perfschema/table_threads.cc: table_threads::read_row_values() 读取threads表时访问PFS_thread",
+      "sql/mysqld.cc: create_thread_to_handle_connection() 新连接线程创建时注册PFS_thread",
+      "storage/perfschema/pfs_events_statements.cc: PFS_thread::m_statement_stack 存储语句统计栈"
+    ],
+    "模块归属": "Performance Schema-线程级统计对象模块",
+    "调用场景": "线程性能数据采集、performance_schema.threads表数据源、线程级内存/锁统计、语句栈管理",
+    "验证备注": "PFS_thread为每个线程维护统计信息；与THD区别：PFS_thread仅统计数据，THD是会话上下文；定义于storage/perfschema/pfs_instr.h；8.0.x PFS架构稳定"
+  },
+  {
+    "id": "REF-042",
+    "符号/宏": "PSI_MUTEX_CALL",
+    "定义位置": "include/mysql/psi/psi_mutex.h",
+    "关键调用/使用位置": [
+      "storage/innobase/include/sync0sync.h: InnoDB互斥量操作时使用PSI_MUTEX_CALL记录锁统计",
+      "mysys/my_thr_init.c: my_thread_init() 线程初始化时PSI互斥量注册",
+      "sql/mdl.cc: MDL_lock::Ticket::m_lock 元数据锁使用PSI_MUTEX_CALL包装",
+      "storage/perfschema/pfs.cc: pfs_init_mutex_v1() 互斥量初始化实现PSI接口"
+    ],
+    "模块归属": "Performance Schema-互斥量仪表宏模块",
+    "调用场景": "互斥量性能统计、锁等待时间记录、performance_schema.mutex_instances表数据采集、锁竞争分析",
+    "验证备注": "PSI_MUTEX_CALL宏根据编译选项展开为PFS调用或空操作；与PSI_RWLOCK_CALL区别：前者互斥量，后者读写锁；定义于include/mysql/psi/psi_mutex.h；8.0.x PSI接口稳定"
+  },
+  {
+    "id": "REF-043",
+    "符号/函数": "acl_getroot",
+    "定义位置": "sql/auth/sql_authorization.cc",
+    "关键调用/使用位置": [
+      "sql/sql_connect.cc: check_connection() 连接建立时调用acl_getroot获取用户权限",
+      "sql/auth/sql_authorization.cc: check_access() 权限检查时查询用户ACL信息",
+      "sql/sql_parse.cc: mysql_change_user() 切换用户时重新调用acl_getroot",
+      "sql/auth/sql_authentication.cc: do_auth_once() 认证成功后调用acl_getroot加载权限"
+    ],
+    "模块归属": "SQL层-权限管理模块",
+    "调用场景": "用户连接权限加载、权限缓存查询、用户切换权限更新、全局权限检查",
+    "验证备注": "acl_getroot从ACL缓存（mysql.user表内存副本）加载用户权限；与acl_check区别：前者加载权限，后者检查权限；定义于sql/auth/sql_authorization.cc；8.0.x支持角色后逻辑增强"
+  },
+  {
+    "id": "REF-044",
+    "符号/类": "Security_context",
+    "定义位置": "sql/auth/sql_security_ctx.h（类声明），sql/auth/sql_security_ctx.cc（方法实现）",
+    "关键调用/使用位置": [
+      "sql/sql_class.h: THD::m_security_ctx 成员变量，存储会话安全上下文",
+      "sql/auth/sql_authorization.cc: check_access() 从Security_context读取用户权限",
+      "sql/sql_view.cc: mysql_create_view() 视图创建时保存definer的Security_context",
+      "sql/sql_parse.cc: mysql_execute_command() 命令执行前验证Security_context"
+    ],
+    "模块归属": "SQL层-安全上下文管理模块",
+    "调用场景": "会话用户身份存储、权限信息缓存、DEFINER权限切换、存储过程/视图权限上下文",
+    "验证备注": "Security_context包含user、host、priv_user、priv_host、全局权限等；与ACL_USER区别：前者会话级，后者全局ACL定义；定义于sql/auth/sql_security_ctx.h；8.0.x支持动态权限"
+  },
+  {
+    "id": "REF-045",
+    "符号/函数": "sys_var_init",
+    "定义位置": "sql/sys_vars.cc",
+    "关键调用/使用位置": [
+      "sql/mysqld.cc: mysqld_main() Server启动时调用sys_var_init初始化系统变量",
+      "sql/sys_vars.cc: 注册所有内置系统变量（如innodb_buffer_pool_size）",
+      "sql/sql_plugin.cc: plugin_initialize() 插件加载时注册插件系统变量",
+      "sql/set_var.cc: sys_var::update() 系统变量更新时访问sys_var对象"
+    ],
+    "模块归属": "SQL层-系统变量初始化模块",
+    "调用场景": "Server启动系统变量注册、插件系统变量注册、SHOW VARIABLES实现、SET命令变量查找",
+    "验证备注": "sys_var_init注册全局/会话变量到sys_var_hash；与Sys_var_*类族配合（如Sys_var_long）；定义于sql/sys_vars.cc；8.0.x持续增加新系统变量"
+  },
+  {
+    "id": "REF-046",
+    "符号/类": "Sys_var_ulong",
+    "定义位置": "sql/sys_vars.h",
+    "关键调用/使用位置": [
+      "sql/sys_vars.cc: innodb_buffer_pool_size等大型unsigned long变量使用Sys_var_ulong定义",
+      "sql/set_var.cc: Sys_var_ulong::update() 更新无符号长整型系统变量",
+      "sql/sys_vars.cc: max_connections、table_open_cache等变量定义为Sys_var_ulong",
+      "sql/sql_show.cc: SHOW VARIABLES时Sys_var_ulong::show_type()返回变量值"
+    ],
+    "模块归属": "SQL层-无符号长整型系统变量类",
+    "调用场景": "定义大数值系统变量、内存大小配置（如缓冲池）、连接数限制、表缓存大小配置",
+    "验证备注": "Sys_var_ulong继承自Sys_var_num；与Sys_var_ulonglong区别：前者unsigned long，后者unsigned long long；定义于sql/sys_vars.h；8.0.x支持动态修改部分变量"
+  },
+  {
+    "id": "REF-047",
+    "符号/宏": "SYS_VAR_NOT_DYNAMIC",
+    "定义位置": "sql/sys_vars.h",
+    "关键调用/使用位置": [
+      "sql/sys_vars.cc: datadir等只读变量定义时使用SYS_VAR_NOT_DYNAMIC标志",
+      "sql/set_var.cc: set_var::check() 检查变量是否可修改时判断SYS_VAR_NOT_DYNAMIC",
+      "sql/sys_vars.cc: basedir、plugin_dir等Server启动后不可修改变量使用该宏",
+      "sql/sql_show.cc: SHOW VARIABLES输出时根据标志显示变量属性"
+    ],
+    "模块归属": "SQL层-系统变量标志宏模块",
+    "调用场景": "标记只读系统变量、防止运行时修改关键配置、SET命令权限检查、配置文件变量验证",
+    "验证备注": "SYS_VAR_NOT_DYNAMIC与READONLY标志等价；与SYS_VAR_DYNAMIC区别：前者禁止运行时修改，后者允许；定义于sql/sys_vars.h；8.0.x持续将更多变量改为动态可调"
+  },
+  {
+    "id": "REF-048",
+    "符号/函数": "create_tmp_table",
+    "定义位置": "sql/temp_table.cc",
+    "关键调用/使用位置": [
+      "sql/sql_select.cc: JOIN::exec() 执行连接时创建临时表存储中间结果",
+      "sql/sql_union.cc: Query_result_union::create_result_table() UNION查询创建临时表",
+      "sql/sql_window.cc: Window::create_temp_table() 窗口函数计算创建临时表",
+      "sql/sql_optimizer.cc: JOIN::make_tmp_tables_info() 优化器决定创建临时表时调用"
+    ],
+    "模块归属": "SQL层-临时表管理模块",
+    "调用场景": "GROUP BY中间结果存储、UNION结果集合并、子查询物化、窗口函数计算临时存储",
+    "验证备注": "create_tmp_table根据配置选择内存临时表（MEMORY引擎）或磁盘临时表（InnoDB）；与internal_tmp_mem_storage_engine变量关联；定义于sql/temp_table.cc；8.0.x默认InnoDB临时表"
+  },
+  {
+    "id": "REF-049",
+    "符号/类": "Temp_table_param",
+    "定义位置": "sql/temp_table.h",
+    "关键调用/使用位置": [
+      "sql/sql_select.cc: JOIN::create_tmp_table() 传递Temp_table_param指定临时表创建参数",
+      "sql/sql_union.cc: Query_result_union::prepare() 准备UNION临时表时初始化Temp_table_param",
+      "sql/temp_table.cc: create_tmp_table() 根据Temp_table_param创建临时表",
+      "sql/sql_window.cc: Window类使用Temp_table_param配置窗口函数临时表"
+    ],
+    "模块归属": "SQL层-临时表参数结构体模块",
+    "调用场景": "指定临时表列定义、是否需要唯一索引、内存/磁盘存储选择、临时表字段映射",
+    "验证备注": "Temp_table_param包含字段列表、分组信息、去重标志等；与TABLE结构体区别：前者临时表参数，后者表对象；定义于sql/temp_table.h；8.0.x临时表机制持续优化"
+  },
+  {
+    "id": "REF-050",
+    "符号/函数": "mysql_alter_table",
+    "定义位置": "sql/sql_table.cc",
+    "关键调用/使用位置": [
+      "sql/sql_parse.cc: mysql_execute_command() 处理SQLCOM_ALTER_TABLE时调用mysql_alter_table",
+      "sql/sql_table.cc: mysql_recreate_table() 表重建时调用mysql_alter_table",
+      "sql/partition_info.cc: mysql_alter_table_partition() 分区表ALTER操作调用",
+      "sql/dd/dd_table.cc: DD表定义更新与mysql_alter_table协同工作（8.0.x数据字典）"
+    ],
+    "模块归属": "SQL层-DDL执行模块",
+    "调用场景": "ALTER TABLE语句执行、表结构修改、索引添加删除、Online DDL协调、表重建操作",
+    "验证备注": "mysql_alter_table是ALTER TABLE核心入口，协调inplace/copy算法选择；8.0.x支持原子DDL、instant ADD COLUMN；与ha_innobase::prepare_inplace_alter_table配合实现Online DDL；定义于sql/sql_table.cc"
+  }
+]
